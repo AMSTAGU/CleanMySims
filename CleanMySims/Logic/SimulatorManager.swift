@@ -236,24 +236,44 @@ class SimulatorManager: ObservableObject {
     
     func cleanAll() {
         isCleaning = true
-        
+
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            
+
             // Artificial delay for better UX if it's too fast, or just to show the animation
             if self.items.count < 5 {
                 Thread.sleep(forTimeInterval: 1.0)
             }
-            
+
             for item in self.items {
                 self.delete(item: item)
                 // Small sleep to allow UI to update and show progress if needed
                 Thread.sleep(forTimeInterval: 0.1)
             }
-            
+
             DispatchQueue.main.async {
                 self.isCleaning = false
             }
+        }
+    }
+
+    func cleanItems(_ items: [CleanableItem]) {
+        Task { @MainActor in
+            isCleaning = true
+            defer { isCleaning = false }
+
+            for item in items {
+                try? await Task.detached(priority: .background) {
+                    if item.isDirectory {
+                        try FileManager.default.removeItem(atPath: item.path)
+                    } else {
+                        try FileManager.default.removeItem(atPath: item.path)
+                    }
+                }.value
+            }
+
+            // Rescan after cleaning
+            scan()
         }
     }
 }

@@ -2,20 +2,30 @@
 //  DetailListView.swift
 //  CleanMySims
 //
-//  Created by Amaury Gau on 23/12/2025.
-//
 
 import SwiftUI
 
 struct DetailListView: View {
     let category: CleanableItemType
     @EnvironmentObject var simulatorManager: SimulatorManager
-    
+    @State private var sortOrder: SortOrder = .defaultOrder
+    @State private var showDeleteConfirm = false
+    @State private var itemToDelete: CleanableItem?
+    @State private var showCleanAllConfirm = false
+
     enum SortOrder {
         case defaultOrder
         case sizeAsc
         case sizeDesc
-        
+
+        var label: String {
+            switch self {
+            case .defaultOrder: return "Par defaut"
+            case .sizeAsc: return "Taille"
+            case .sizeDesc: return "Taille"
+            }
+        }
+
         var next: SortOrder {
             switch self {
             case .defaultOrder: return .sizeDesc
@@ -23,18 +33,8 @@ struct DetailListView: View {
             case .sizeAsc: return .defaultOrder
             }
         }
-        
-        var icon: String {
-            switch self {
-            case .defaultOrder: return "arrow.up.arrow.down"
-            case .sizeDesc: return "arrow.down"
-            case .sizeAsc: return "arrow.up"
-            }
-        }
     }
-    
-    @State private var sortOrder: SortOrder = .defaultOrder
-    
+
     var filteredItems: [CleanableItem] {
         let items = simulatorManager.items.filter { $0.type == category }
         switch sortOrder {
@@ -46,68 +46,151 @@ struct DetailListView: View {
             return items.sorted { $0.size > $1.size }
         }
     }
-    
+
+    var totalSize: Int64 {
+        filteredItems.reduce(0) { $0 + $1.size }
+    }
+
+    var accentColor: Color {
+        Theme.Colors.color(for: category)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Stats Header
+            // Header
             HStack {
                 Text(category.rawValue)
                     .font(Theme.Fonts.headline)
                     .foregroundStyle(Theme.Colors.primaryText)
-                
+
                 Spacer()
-                
-                HStack(spacing: 15) {
-                    // Sort Button
+
+                HStack(spacing: 12) {
+                    // Sort button
+                    Menu {
+                        Button("Par defaut") { sortOrder = .defaultOrder }
+                        Button("Taille") { sortOrder = .sizeAsc }
+                        Button("Taille") { sortOrder = .sizeDesc }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.arrow.down")
+                            Text(sortOrder.label)
+                        }
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.Colors.hoverBackground)
+                        .cornerRadius(6)
+                    }
+                    .menuStyle(.borderlessButton)
+
+                    Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+                        .font(Theme.Fonts.headline)
+                        .foregroundStyle(accentColor)
+
+                    // Clean button
                     Button(action: {
-                        withAnimation {
-                            sortOrder = sortOrder.next
-                        }
+                        showCleanAllConfirm = true
                     }) {
-                        HStack(spacing: 5) {
-                           Image(systemName: sortOrder.icon)
-                           if sortOrder != .defaultOrder {
-                               Text("Size")
-                                   .font(Theme.Fonts.caption)
-                           }
+                        HStack(spacing: 6) {
+                            Image(systemName: "trash")
+                            Text("Clean")
                         }
-                        .foregroundStyle(Theme.Colors.accentBlue)
-                        .padding(6)
-                        .background(Theme.Colors.accentBlue.opacity(0.1))
-                        .cornerRadius(8)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Theme.Colors.danger)
+                        .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
-                    .help("Sort by Size")
-                    
-                    Text(ByteCountFormatter.string(fromByteCount: filteredItems.reduce(0) { $0 + $1.size }, countStyle: .file))
-                        .font(Theme.Fonts.headline)
-                        .foregroundStyle(Theme.Colors.accentPink)
+                    .disabled(filteredItems.isEmpty)
+                    .opacity(filteredItems.isEmpty ? 0.5 : 1.0)
                 }
             }
-            .padding()
-            .background(Material.ultraThin)
-            
+            .padding(16)
+            .background(Color.white)
+            .overlay(
+                Rectangle()
+                    .fill(Theme.Colors.border)
+                    .frame(height: 1),
+                alignment: .bottom
+            )
+
+            // Content
             if filteredItems.isEmpty {
-                VStack(spacing: 20) {
-                    Spacer()
+                VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle")
-                        .font(.system(size: 60))
-                        .foregroundStyle(Theme.Colors.success.opacity(0.8))
-                    Text("All Clean!")
-                        .font(Theme.Fonts.title)
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    Spacer()
+                        .font(.system(size: 48))
+                        .foregroundStyle(Theme.Colors.success)
+                    Text("Tout est propre !")
+                        .font(Theme.Fonts.headline)
+                        .foregroundStyle(Theme.Colors.secondaryText)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(filteredItems) { item in
-                        DetailRow(item: item)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparatorTint(Theme.Colors.secondaryText.opacity(0.2))
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(filteredItems) { item in
+                            DetailRow(
+                                item: item,
+                                accentColor: accentColor
+                            ) {
+                                itemToDelete = item
+                                showDeleteConfirm = true
+                            }
+                        }
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Theme.Colors.background)
+        .overlay {
+            if showDeleteConfirm, let item = itemToDelete {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+
+                    ConfirmDialog(
+                        title: "Supprimer cet element ?",
+                        message: "\(item.sizeString) seront liberes.",
+                        detail: "\"\(item.name)\"",
+                        confirmTitle: "Supprimer",
+                        isDangerous: true,
+                        onConfirm: {
+                            simulatorManager.delete(item: item)
+                            showDeleteConfirm = false
+                            itemToDelete = nil
+                        },
+                        onCancel: {
+                            showDeleteConfirm = false
+                            itemToDelete = nil
+                        }
+                    )
+                }
+            }
+
+            if showCleanAllConfirm {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+
+                    ConfirmDialog(
+                        title: "Nettoyer \(category.rawValue) ?",
+                        message: "\(filteredItems.count) elements, \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) seront supprimes.",
+                        detail: nil,
+                        confirmTitle: "Nettoyer",
+                        isDangerous: true,
+                        onConfirm: {
+                            simulatorManager.cleanItems(filteredItems)
+                            showCleanAllConfirm = false
+                        },
+                        onCancel: {
+                            showCleanAllConfirm = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -115,62 +198,83 @@ struct DetailListView: View {
 
 struct DetailRow: View {
     let item: CleanableItem
-    @EnvironmentObject var simulatorManager: SimulatorManager
-    @State private var isHovering = false
-    
+    let accentColor: Color
+    let onDelete: () -> Void
+
+    @State private var isHovered = false
+
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.name)
-                    .font(Theme.Fonts.subheadline)
+                    .font(Theme.Fonts.body)
                     .foregroundStyle(Theme.Colors.primaryText)
-                
-                if let details = item.details {
-                    Text(details)
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                }
-                
-                Text(item.path)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
                     .lineLimit(1)
-                    .truncationMode(.middle)
+
+                HStack(spacing: 8) {
+                    if let details = item.details {
+                        Text(details)
+                            .font(Theme.Fonts.caption)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+
+                    Text(item.path)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
-            
+
             Spacer()
-            
+
             Text(item.sizeString)
                 .font(Theme.Fonts.mono)
-                .foregroundStyle(Theme.Colors.primaryText.opacity(0.8))
-            
-            HStack(spacing: 15) {
-                Button(action: {
-                    NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
-                }) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(Theme.Colors.accentBlue)
+                .foregroundStyle(Theme.Colors.secondaryText)
+
+            // Actions (show on hover)
+            if isHovered {
+                HStack(spacing: 12) {
+                    Button(action: {
+                        NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+                    }) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 14))
+                            .foregroundStyle(accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Ouvrir dans Finder")
+
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.Colors.danger)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Supprimer")
                 }
-                .buttonStyle(.plain)
-                .help("Show in Finder")
-                
-                Button(action: {
-                    simulatorManager.delete(item: item)
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundStyle(Theme.Colors.danger)
-                }
-                .buttonStyle(.plain)
-                .help("Delete Item")
+                .transition(.opacity)
             }
-            .padding(.leading, 10)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(isHovering ? Color.white.opacity(0.05) : Color.clear)
-        .cornerRadius(8)
-        .onHover { hover in
-            isHovering = hover
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(isHovered ? Theme.Colors.hoverBackground : Color.clear)
+        .onHover { hovered in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovered = hovered
+            }
         }
+        .overlay(
+            Rectangle()
+                .fill(Theme.Colors.border)
+                .frame(height: 1),
+            alignment: .bottom
+        )
     }
+}
+
+#Preview {
+    DetailListView(category: .cache)
+        .environmentObject(SimulatorManager())
+        .frame(width: 600, height: 400)
 }
