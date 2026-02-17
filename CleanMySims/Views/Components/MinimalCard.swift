@@ -33,11 +33,11 @@ struct MinimalCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-        .background(VisualEffectBlur(material: .contentBackground, blendingMode: .withinWindow))
+        .background(Color.white.opacity(0.6)) // "Blanc avec une opacité très réduite"
         .cornerRadius(Theme.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Layout.cardCornerRadius)
-                .stroke(Theme.Colors.border, lineWidth: 1)
+                .stroke(Color.white.opacity(0.8), lineWidth: 1) // "Juste un contour blanc"
         )
     }
 }
