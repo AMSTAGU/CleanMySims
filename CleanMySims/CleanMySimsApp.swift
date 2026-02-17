@@ -2,8 +2,6 @@
 //  CleanMySimsApp.swift
 //  CleanMySims
 //
-//  Created by Amaury Gau on 23/12/2025.
-//
 
 import SwiftUI
 
@@ -15,6 +13,16 @@ struct CleanMySimsApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(simulatorManager)
+                .frame(
+                    width: Theme.Layout.windowWidth,
+                    height: Theme.Layout.windowHeight
+                )
+                .fixedSize()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .commands {
+            // Remove unnecessary menu items
+            CommandGroup(replacing: .newItem) { }
         }
     }
 }
