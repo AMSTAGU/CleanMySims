@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct CleanMySimsApp: App {
+    @StateObject private var simulatorManager = SimulatorManager()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(simulatorManager)
         }
     }
 }
