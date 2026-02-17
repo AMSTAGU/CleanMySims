@@ -19,6 +19,16 @@ struct PieChart: View {
 
     @State private var hoveredSlice: Int?
 
+    // Find the index of the largest slice to select by default
+    private var largestSliceIndex: Int? {
+        slices.indices.max(by: { slices[$0].value < slices[$1].value })
+    }
+
+    // Active slice is either the hovered one or the largest one by default
+    private var activeSliceIndex: Int? {
+        hoveredSlice ?? largestSliceIndex
+    }
+
     private var total: Double {
         slices.reduce(0) { $0 + $1.value }
     }
@@ -29,8 +39,9 @@ struct PieChart: View {
         let dy = point.y - center.y
         let distance = sqrt(dx * dx + dy * dy)
         let radius = min(frame.width, frame.height) / 2
-        let innerRadius = radius * 0.55
+        let innerRadius = radius * 0.55 // Match the shape's inner radius ratio
 
+        // Check if point is inside the donut ring
         if distance > radius || distance < innerRadius {
             return nil
         }
@@ -59,20 +70,16 @@ struct PieChart: View {
                     let slice = sliceAngles[index]
                     PieSliceShape(
                         startAngle: slice.start,
-                        endAngle: slice.end
+                        endAngle: slice.end,
+                        innerRadiusRatio: 0.55 // Define donut hole size
                     )
                     .fill(slices[index].color)
-                    .scaleEffect(hoveredSlice == index ? 1.08 : 1.0)
-                    .animation(.easeInOut(duration: 0.2), value: hoveredSlice)
+                    .scaleEffect(activeSliceIndex == index ? 1.05 : 1.0) // Subtle scale for selection
+                    .animation(.easeInOut(duration: 0.2), value: activeSliceIndex)
                 }
 
-                // Center circle (donut effect)
-                Circle()
-                    .fill(Theme.Colors.background)
-                    .frame(width: size * 0.55, height: size * 0.55)
-
-                // Hover label in center
-                if let index = hoveredSlice {
+                // Hover label in center (no background, so transparent)
+                if let index = activeSliceIndex {
                     VStack(spacing: 2) {
                         Text(slices[index].label)
                             .font(.system(size: 12, weight: .medium))
@@ -84,7 +91,7 @@ struct PieChart: View {
                 }
             }
             .frame(width: size, height: size)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle()) // Ensure hit testing works on the whole area
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
@@ -116,20 +123,31 @@ struct PieChart: View {
 struct PieSliceShape: Shape {
     let startAngle: Angle
     let endAngle: Angle
+    var innerRadiusRatio: CGFloat
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) / 2
+        let outerRadius = min(rect.width, rect.height) / 2
+        let innerRadius = outerRadius * innerRadiusRatio
 
-        path.move(to: center)
+        // Draw the donut wedge
         path.addArc(
             center: center,
-            radius: radius,
+            radius: outerRadius,
             startAngle: startAngle,
             endAngle: endAngle,
             clockwise: false
         )
+        
+        path.addArc(
+            center: center,
+            radius: innerRadius,
+            startAngle: endAngle,
+            endAngle: startAngle,
+            clockwise: true // Reverse direction for inner arc to close the shape correctly
+        )
+        
         path.closeSubpath()
 
         return path
