@@ -24,38 +24,49 @@ struct PieChart: View {
     }
 
     var body: some View {
-        ZStack {
-            ForEach(Array(sliceAngles.enumerated()), id: \.element.id) { index, slice in
-                PieSliceShape(
-                    startAngle: slice.start,
-                    endAngle: slice.end
-                )
-                .fill(slices[index].color)
-                .scaleEffect(hoveredSlice == slices[index].id ? 1.05 : 1.0)
-                .animation(.easeInOut(duration: 0.15), value: hoveredSlice)
-                .onHover { hovering in
-                    hoveredSlice = hovering ? slices[index].id : nil
+        GeometryReader { geometry in
+            ZStack {
+                // Draw slices from largest to smallest angle for proper hit testing
+                ForEach(sliceAngles.indices.reversed(), id: \.self) { index in
+                    let slice = sliceAngles[index]
+                    PieSliceShape(
+                        startAngle: slice.start,
+                        endAngle: slice.end
+                    )
+                    .fill(slices[index].color)
+                    .scaleEffect(hoveredSlice == slices[index].id ? 1.08 : 1.0)
+                    .animation(.easeInOut(duration: 0.15), value: hoveredSlice)
+                    .contentShape(PieSliceShape(
+                        startAngle: slice.start,
+                        endAngle: slice.end
+                    ))
+                    .onHover { hovering in
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            hoveredSlice = hovering ? slices[index].id : nil
+                        }
+                    }
+                }
+
+                // Center circle (donut effect)
+                Circle()
+                    .fill(Theme.Colors.background)
+                    .frame(width: size * 0.45, height: size * 0.45)
+
+                // Hover label in center
+                if let hoveredId = hoveredSlice,
+                   let hovered = slices.first(where: { $0.id == hoveredId }) {
+                    VStack(spacing: 2) {
+                        Text(hovered.label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Text(hovered.size)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    .transition(.opacity)
                 }
             }
-
-            // Center circle (donut effect)
-            Circle()
-                .fill(Theme.Colors.background)
-                .frame(width: size * 0.5, height: size * 0.5)
-
-            // Hover label in center
-            if let hoveredId = hoveredSlice,
-               let hovered = slices.first(where: { $0.id == hoveredId }) {
-                VStack(spacing: 2) {
-                    Text(hovered.label)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    Text(hovered.size)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                }
-                .transition(.opacity)
-            }
+            .frame(width: size, height: size)
         }
         .frame(width: size, height: size)
     }
@@ -108,7 +119,7 @@ struct PieSliceShape: Shape {
         PieSlice(value: 5, color: Theme.Colors.deviceSupport, label: "Support", size: "0.5 GB")
     ]
 
-    PieChart(slices: slices, size: 150)
+    PieChart(slices: slices, size: 180)
         .padding()
         .background(Theme.Colors.background)
 }

@@ -54,7 +54,7 @@ struct DashboardView: View {
 
                     // Pie Chart
                     if simulatorManager.totalSize > 0 {
-                        PieChart(slices: pieSlices, size: 140)
+                        PieChart(slices: pieSlices, size: 180)
                             .padding(.bottom, 24)
 
                         // Legend
