@@ -20,9 +20,9 @@ struct DetailListView: View {
 
         var label: String {
             switch self {
-            case .defaultOrder: return "Par défaut"
-            case .sizeAsc: return "Taille ↑"
-            case .sizeDesc: return "Taille ↓"
+            case .defaultOrder: return "Default"
+            case .sizeAsc: return "Size ↑"
+            case .sizeDesc: return "Size ↓"
             }
         }
 
@@ -129,7 +129,7 @@ struct DetailListView: View {
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 48))
                         .foregroundStyle(Theme.Colors.success)
-                    Text("Tout est propre !")
+                    Text("All clean!")
                         .font(Theme.Fonts.headline)
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
@@ -158,10 +158,10 @@ struct DetailListView: View {
                         .ignoresSafeArea()
 
                     ConfirmDialog(
-                        title: "Supprimer cet element ?",
-                        message: "\(item.sizeString) seront liberes.",
+                        title: "Delete this item?",
+                        message: "\(item.sizeString) will be freed.",
                         detail: "\"\(item.name)\"",
-                        confirmTitle: "Supprimer",
+                        confirmTitle: "Delete",
                         isDangerous: true,
                         onConfirm: {
                             simulatorManager.delete(item: item)
@@ -182,10 +182,10 @@ struct DetailListView: View {
                         .ignoresSafeArea()
 
                     ConfirmDialog(
-                        title: "Nettoyer \(category.rawValue) ?",
-                        message: "\(filteredItems.count) elements, \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) seront supprimes.",
+                        title: "Clean \(category.rawValue)?",
+                        message: "\(filteredItems.count) items, \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) will be deleted.",
                         detail: nil,
-                        confirmTitle: "Nettoyer",
+                        confirmTitle: "Clean",
                         isDangerous: true,
                         onConfirm: {
                             simulatorManager.cleanItems(filteredItems)
@@ -248,7 +248,7 @@ struct DetailRow: View {
                             .foregroundStyle(accentColor)
                     }
                     .buttonStyle(.plain)
-                    .help("Ouvrir dans Finder")
+                    .help("Reveal in Finder")
 
                     Button(action: onDelete) {
                         Image(systemName: "trash")
@@ -256,7 +256,7 @@ struct DetailRow: View {
                             .foregroundStyle(Theme.Colors.danger)
                     }
                     .buttonStyle(.plain)
-                    .help("Supprimer")
+                    .help("Delete")
                 }
                 .transition(.opacity)
             }

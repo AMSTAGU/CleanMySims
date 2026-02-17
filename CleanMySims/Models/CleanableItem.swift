@@ -8,7 +8,7 @@ import Foundation
 enum CleanableItemType: String, CaseIterable {
     case cache = "Caches"
     case deviceSupport = "Device Support"
-    case virtualDevice = "Simulateurs"
+    case virtualDevice = "Simulators"
     case runtimes = "Runtimes"
     case builds = "Builds"
 

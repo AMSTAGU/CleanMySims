@@ -32,7 +32,7 @@ struct ConfirmDialog: View {
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 16) {
-                Button("Annuler") {
+                Button("Cancel") {
                     onCancel()
                 }
                 .buttonStyle(.plain)
