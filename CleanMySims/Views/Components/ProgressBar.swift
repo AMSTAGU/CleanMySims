@@ -11,7 +11,7 @@ struct ProgressBar: View {
     let color: Color
 
     @State private var animatedProgress: CGFloat = 0
-    @State private var phase: CGFloat = 0
+    @State private var fakeProgress: CGFloat = 0
 
     init(progress: Double = 0, isIndeterminate: Bool = false, color: Color? = nil) {
         self.progress = progress
@@ -28,17 +28,14 @@ struct ProgressBar: View {
 
                 // Progress fill
                 if isIndeterminate {
-                    // Indeterminate animation - slides from left to right
+                    // Fake progress - fills from 0% to 90% progressively
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color)
-                        .frame(width: geometry.size.width * 0.3)
-                        .offset(x: -geometry.size.width * 0.3 + phase * (geometry.size.width * 1.3))
+                        .frame(width: geometry.size.width * fakeProgress)
                         .onAppear {
-                            withAnimation(
-                                .linear(duration: 1.2)
-                                .repeatForever(autoreverses: false)
-                            ) {
-                                phase = 1
+                            // Animate to 90% over 3 seconds
+                            withAnimation(.easeInOut(duration: 3.0)) {
+                                fakeProgress = 0.9
                             }
                         }
                 } else {
