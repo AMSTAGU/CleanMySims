@@ -39,7 +39,7 @@ struct Theme {
     }
 
     struct Fonts {
-        static let title = Font.system(size: 32, weight: .light)
+        static let title = Font.system(size: 32, weight: .bold)
         static let headline = Font.system(size: 16, weight: .medium)
         static let subheadline = Font.system(size: 15, weight: .medium)
         static let body = Font.system(size: 13, weight: .regular)
