@@ -17,32 +17,28 @@ struct PieChart: View {
     let slices: [PieSlice]
     let size: CGFloat
 
-    @State private var hoveredSlice: UUID?
-    @State private var mouseLocation: CGPoint = .zero
+    @State private var hoveredSlice: Int?
 
     private var total: Double {
         slices.reduce(0) { $0 + $1.value }
     }
 
-    private func sliceIndex(at point: CGPoint) -> Int? {
-        let center = CGPoint(x: size / 2, y: size / 2)
+    private func sliceIndex(at point: CGPoint, in frame: CGRect) -> Int? {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
         let dx = point.x - center.x
         let dy = point.y - center.y
         let distance = sqrt(dx * dx + dy * dy)
-        let radius = size / 2
-        let innerRadius = radius * 0.55 // Donut hole
+        let radius = min(frame.width, frame.height) / 2
+        let innerRadius = radius * 0.55
 
-        // Check if outside the pie or inside the hole
         if distance > radius || distance < innerRadius {
             return nil
         }
 
-        // Calculate angle
         var angle = atan2(dy, dx) * 180 / .pi
-        angle = angle + 90 // Adjust to start from top
+        angle = angle + 90
         if angle < 0 { angle += 360 }
 
-        // Find which slice this angle belongs to
         var currentAngle = 0.0
         for (index, slice) in slices.enumerated() {
             let sliceAngle = total > 0 ? (slice.value / total) * 360 : 0
@@ -56,72 +52,59 @@ struct PieChart: View {
     }
 
     var body: some View {
-        ZStack {
-            // Draw all slices
-            ForEach(sliceAngles.indices, id: \.self) { index in
-                let slice = sliceAngles[index]
-                PieSliceShape(
-                    startAngle: slice.start,
-                    endAngle: slice.end
-                )
-                .fill(slices[index].color)
-                .scaleEffect(hoveredSlice == slices[index].id ? 1.08 : 1.0)
-                .animation(.easeInOut(duration: 0.15), value: hoveredSlice)
-            }
-
-            // Center circle (donut effect)
-            Circle()
-                .fill(Theme.Colors.background)
-                .frame(width: size * 0.55, height: size * 0.55)
-
-            // Hover label in center
-            if let hoveredId = hoveredSlice,
-               let hovered = slices.first(where: { $0.id == hoveredId }) {
-                VStack(spacing: 2) {
-                    Text(hovered.label)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                    Text(hovered.size)
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.Colors.secondaryText)
+        GeometryReader { geometry in
+            ZStack {
+                // Draw all slices
+                ForEach(sliceAngles.indices, id: \.self) { index in
+                    let slice = sliceAngles[index]
+                    PieSliceShape(
+                        startAngle: slice.start,
+                        endAngle: slice.end
+                    )
+                    .fill(slices[index].color)
+                    .scaleEffect(hoveredSlice == index ? 1.08 : 1.0)
                 }
-                .transition(.opacity)
+
+                // Center circle (donut effect)
+                Circle()
+                    .fill(Theme.Colors.background)
+                    .frame(width: size * 0.55, height: size * 0.55)
+
+                // Hover label in center
+                if let index = hoveredSlice {
+                    VStack(spacing: 2) {
+                        Text(slices[index].label)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Theme.Colors.primaryText)
+                        Text(slices[index].size)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                }
+            }
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    hoveredSlice = sliceIndex(at: location, in: geometry.frame(in: .local))
+                case .ended:
+                    hoveredSlice = nil
+                }
             }
         }
         .frame(width: size, height: size)
-        .background(
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if let index = sliceIndex(at: value.location) {
-                                hoveredSlice = slices[index].id
-                            } else {
-                                hoveredSlice = nil
-                            }
-                        }
-                        .onEnded { _ in
-                            hoveredSlice = nil
-                        }
-                )
-        )
-        .onHover { hovering in
-            if !hovering {
-                hoveredSlice = nil
-            }
-        }
     }
 
-    private var sliceAngles: [(id: UUID, start: Angle, end: Angle)] {
-        var angles: [(id: UUID, start: Angle, end: Angle)] = []
+    private var sliceAngles: [(start: Angle, end: Angle)] {
+        var angles: [(start: Angle, end: Angle)] = []
         var currentAngle = Angle.degrees(-90)
 
-        for slice in slices {
-            let sliceAngle = total > 0 ? (slice.value / total) * 360 : 0
+        for _ in slices {
+            let sliceAngle = total > 0 ? (slices[angles.count].value / total) * 360 : 0
             let startAngle = currentAngle
             let endAngle = currentAngle + .degrees(sliceAngle)
-            angles.append((slice.id, startAngle, endAngle))
+            angles.append((startAngle, endAngle))
             currentAngle = endAngle
         }
 
