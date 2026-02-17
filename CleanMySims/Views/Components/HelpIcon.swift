@@ -7,12 +7,27 @@ import SwiftUI
 
 struct HelpIcon: View {
     let tooltip: String
+    @State private var isHovering = false
 
     var body: some View {
         Image(systemName: "questionmark.circle")
             .font(.system(size: 12))
             .foregroundStyle(Theme.Colors.secondaryText)
-            .help(tooltip)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+            .popover(
+                isPresented: $isHovering,
+                attachmentAnchor: .point(.trailing),
+                arrowEdge: .trailing
+            ) {
+                Text(tooltip)
+                    .font(Theme.Fonts.caption)
+                    .foregroundStyle(Theme.Colors.primaryText)
+                    .padding(12)
+                    .frame(width: 200)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
     }
 }
 
@@ -24,7 +39,7 @@ struct HelpIcon: View {
         }
         HStack {
             Text("Simulateurs")
-            HelpIcon(tooltip: "Ceci est un texte d'aide beaucoup plus long qui devrait s'afficher correctement sur plusieurs lignes.")
+            HelpIcon(tooltip: "Ceci est un texte d'aide beaucoup plus long.")
         }
     }
     .padding(50)
