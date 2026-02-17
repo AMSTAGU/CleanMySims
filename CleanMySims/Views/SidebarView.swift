@@ -105,16 +105,9 @@ struct SidebarView: View {
             Spacer()
 
             // Footer
-            VStack(spacing: 10) {
-                // Version
-                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("v\(version)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
-                }
-
+            VStack(spacing: 8) {
                 // Links
-                HStack(spacing: 20) {
+                HStack(spacing: 12) {
                     Link(destination: URL(string: "https://github.com/AMSTAGU/CleanMySims")!) {
                         Image("github")
                             .resizable()
@@ -134,6 +127,13 @@ struct SidebarView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Offrir un café")
+                }
+
+                // Version
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("v\(version)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
                 }
             }
             .frame(maxWidth: .infinity)
