@@ -104,29 +104,39 @@ struct SidebarView: View {
 
             Spacer()
 
-            // Footer with links
-            HStack(spacing: 20) {
-                Link(destination: URL(string: "https://github.com/AMSTAGU/CleanMySims")!) {
-                    Image("github")
-                        .resizable()
-                        .renderingMode(.template)
-                        .frame(width: 20, height: 20)
-                        .foregroundStyle(Theme.Colors.secondaryText)
+            // Footer
+            VStack(spacing: 10) {
+                // Version
+                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                    Text("v\(version)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
                 }
-                .buttonStyle(.plain)
-                .help("Voir sur GitHub")
 
-                Link(destination: URL(string: "https://buymeacoffee.com/amstagu")!) {
-                    Image("coffee")
-                        .resizable()
-                        .renderingMode(.template)
-                        .frame(width: 20, height: 20)
-                        .foregroundStyle(Theme.Colors.secondaryText)
+                // Links
+                HStack(spacing: 20) {
+                    Link(destination: URL(string: "https://github.com/AMSTAGU/CleanMySims")!) {
+                        Image("github")
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 20, height: 20)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Voir sur GitHub")
+
+                    Link(destination: URL(string: "https://buymeacoffee.com/amstagu")!) {
+                        Image("coffee")
+                            .resizable()
+                            .renderingMode(.template)
+                            .frame(width: 20, height: 20)
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Offrir un café")
                 }
-                .buttonStyle(.plain)
-                .help("Offrir un café")
             }
-            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
             .padding(.bottom, 16)
         }
         .background(Theme.Colors.sidebarBackground)
