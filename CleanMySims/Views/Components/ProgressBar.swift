@@ -8,14 +8,16 @@ import SwiftUI
 struct ProgressBar: View {
     let progress: Double // 0.0 to 1.0
     let isIndeterminate: Bool
+    let forceComplete: Bool
     let color: Color
 
     @State private var animatedProgress: CGFloat = 0
     @State private var fakeProgress: CGFloat = 0
 
-    init(progress: Double = 0, isIndeterminate: Bool = false, color: Color? = nil) {
+    init(progress: Double = 0, isIndeterminate: Bool = false, forceComplete: Bool = false, color: Color? = nil) {
         self.progress = progress
         self.isIndeterminate = isIndeterminate
+        self.forceComplete = forceComplete
         self.color = color ?? Theme.Colors.secondaryText.opacity(0.6)
     }
 
@@ -28,14 +30,20 @@ struct ProgressBar: View {
 
                 // Progress fill
                 if isIndeterminate {
-                    // Fake progress - fills from 0% to 90% progressively
+                    // Fake progress - fills from 0% to 90% progressively, or 100% when complete
                     RoundedRectangle(cornerRadius: 2)
                         .fill(color)
                         .frame(width: geometry.size.width * fakeProgress)
                         .onAppear {
-                            // Animate to 90% over 35 seconds
                             withAnimation(.easeInOut(duration: 35.0)) {
                                 fakeProgress = 0.9
+                            }
+                        }
+                        .onChange(of: forceComplete) { _, complete in
+                            if complete {
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    fakeProgress = 1.0
+                                }
                             }
                         }
                 } else {

@@ -7,6 +7,8 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject var simulatorManager: SimulatorManager
+    @State private var showScanComplete = false
+    @State private var showCleanComplete = false
 
     private let categories: [(type: CleanableItemType, title: String, help: String)] = [
         (.cache, "Caches", "Données temporaires des simulateurs : logs, caches de compilation, données téléchargées"),
@@ -127,21 +129,41 @@ struct DashboardView: View {
             }
 
             // Loading overlay
-            if simulatorManager.isScanning {
+            if simulatorManager.isScanning || showScanComplete {
                 LoadingOverlay(
-                    title: "Scan en cours...",
-                    isIndeterminate: true
+                    title: showScanComplete ? "Terminé !" : "Scan en cours...",
+                    isIndeterminate: true,
+                    forceComplete: showScanComplete
                 )
             }
 
-            if simulatorManager.isCleaning {
+            if simulatorManager.isCleaning || showCleanComplete {
                 LoadingOverlay(
-                    title: "Nettoyage en cours...",
-                    isIndeterminate: true
+                    title: showCleanComplete ? "Terminé !" : "Nettoyage en cours...",
+                    isIndeterminate: true,
+                    forceComplete: showCleanComplete
                 )
             }
         }
         .background(Theme.Colors.background)
+        .onChange(of: simulatorManager.isScanning) { _, isScanning in
+            if !isScanning {
+                // Scan just finished, show completion
+                showScanComplete = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    showScanComplete = false
+                }
+            }
+        }
+        .onChange(of: simulatorManager.isCleaning) { _, isCleaning in
+            if !isCleaning {
+                // Clean just finished, show completion
+                showCleanComplete = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    showCleanComplete = false
+                }
+            }
+        }
         .onAppear {
             if simulatorManager.items.isEmpty && !simulatorManager.isScanning {
                 simulatorManager.scan()
@@ -153,10 +175,11 @@ struct DashboardView: View {
 struct LoadingOverlay: View {
     let title: String
     let isIndeterminate: Bool
+    var forceComplete: Bool = false
 
     var body: some View {
         VStack(spacing: 16) {
-            ProgressBar(isIndeterminate: isIndeterminate)
+            ProgressBar(isIndeterminate: isIndeterminate, forceComplete: forceComplete)
                 .frame(width: 300)
 
             Text(title)
