@@ -2,27 +2,23 @@
 //  CleanableItem.swift
 //  CleanMySims
 //
-//  Created by Amaury Gau on 23/12/2025.
-//
 
 import Foundation
 
-enum CleanableItemType: String, Identifiable, CaseIterable {
-    case cache = "Derived Data & Caches"
-    case deviceSupport = "iOS Device Support"
-    case virtualDevice = "Simulator Devices"
-    case runtimes = "iOS Versions"
-    case builds = "Builds (Derived Data)"
-    
-    var id: String { rawValue }
-    
+enum CleanableItemType: String, CaseIterable {
+    case cache = "Caches"
+    case deviceSupport = "Device Support"
+    case virtualDevice = "Simulateurs"
+    case runtimes = "Runtimes"
+    case builds = "Builds"
+
     var iconName: String {
         switch self {
-        case .cache: return "trash.circle.fill"
-        case .deviceSupport: return "iphone.circle.fill"
-        case .virtualDevice: return "platter.2.filled.iphone"
-        case .runtimes: return "gearshape.2.fill"
-        case .builds: return "hammer.circle.fill"
+        case .cache: return "archivebox"
+        case .deviceSupport: return "iphone.circle"
+        case .virtualDevice: return "iphone"
+        case .runtimes: return "gearshape.2"
+        case .builds: return "hammer.circle"
         }
     }
 }
@@ -35,8 +31,7 @@ struct CleanableItem: Identifiable, Hashable {
     let type: CleanableItemType
     let isDirectory: Bool
     let details: String?
-    
-    // For SwiftUI listing
+
     var sizeString: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
