@@ -67,11 +67,17 @@ struct SidebarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Text("CleanMySims")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Theme.Colors.primaryText)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+            HStack(spacing: 10) {
+                Image("logo")
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .cornerRadius(6)
+                Text("CleanMySims")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
 
             // Dashboard
             SidebarItem(
@@ -97,6 +103,31 @@ struct SidebarView: View {
             }
 
             Spacer()
+
+            // Footer with links
+            HStack(spacing: 20) {
+                Link(destination: URL(string: "https://github.com/AMSTAGU/CleanMySims")!) {
+                    Image("github")
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 20, height: 20)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .help("Voir sur GitHub")
+
+                Link(destination: URL(string: "https://buymeacoffee.com/amstagu")!) {
+                    Image("coffee")
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 20, height: 20)
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .help("Offrir un café")
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
         .background(Theme.Colors.sidebarBackground)
     }
