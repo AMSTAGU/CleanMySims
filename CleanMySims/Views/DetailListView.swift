@@ -76,20 +76,19 @@ struct DetailListView: View {
                 HStack(spacing: 12) {
                     // Sort button
                     Button(action: {
-                        sortOrder = sortOrder.next
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: sortOrder.icon)
-                            Text(sortOrder.label)
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sortOrder = sortOrder.next
                         }
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Theme.Colors.hoverBackground)
-                        .cornerRadius(6)
+                    }) {
+                        Image(systemName: sortOrder.icon)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .frame(width: 28, height: 28)
+                            .background(Theme.Colors.hoverBackground)
+                            .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
+                    .help(sortOrder.label)
 
                     Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
                         .font(.system(size: 16, weight: .bold))
