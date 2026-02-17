@@ -24,10 +24,12 @@ struct DashboardView: View {
 
     private var pieSlices: [PieSlice] {
         categories.map { category in
-            PieSlice(
-                value: Double(sizeForType(category.type)),
+            let size = sizeForType(category.type)
+            return PieSlice(
+                value: Double(size),
                 color: Theme.Colors.color(for: category.type),
-                label: category.title
+                label: category.title,
+                size: ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
             )
         }
     }
