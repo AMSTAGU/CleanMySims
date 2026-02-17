@@ -16,25 +16,62 @@ struct DashboardView: View {
         (.builds, "Builds", "Données de compilation générées par Xcode (DerivedData)")
     ]
 
+    private func sizeForType(_ type: CleanableItemType) -> Int64 {
+        simulatorManager.items
+            .filter { $0.type == type }
+            .reduce(0) { $0 + $1.size }
+    }
+
+    private var pieSlices: [PieSlice] {
+        categories.map { category in
+            PieSlice(
+                value: Double(sizeForType(category.type)),
+                color: Theme.Colors.color(for: category.type),
+                label: category.title
+            )
+        }
+    }
+
     var body: some View {
         ZStack {
-            VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 4) {
-                    Text("Espace récupérable")
-                        .font(Theme.Fonts.body)
-                        .foregroundStyle(Theme.Colors.secondaryText)
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Header
+                    VStack(spacing: 4) {
+                        Text("Espace récupérable")
+                            .font(Theme.Fonts.body)
+                            .foregroundStyle(Theme.Colors.secondaryText)
 
-                    Text(ByteCountFormatter.string(fromByteCount: simulatorManager.totalSize, countStyle: .file))
-                        .font(Theme.Fonts.title)
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .contentTransition(.numericText(value: Double(simulatorManager.totalSize)))
-                }
-                .padding(.top, 48)
-                .padding(.bottom, 32)
+                        Text(ByteCountFormatter.string(fromByteCount: simulatorManager.totalSize, countStyle: .file))
+                            .font(Theme.Fonts.title)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .contentTransition(.numericText(value: Double(simulatorManager.totalSize)))
+                    }
+                    .padding(.top, 40)
+                    .padding(.bottom, 24)
 
-                // Cards Grid
-                ScrollView {
+                    // Pie Chart
+                    if simulatorManager.totalSize > 0 {
+                        PieChart(slices: pieSlices, size: 140)
+                            .padding(.bottom, 24)
+
+                        // Legend
+                        HStack(spacing: 16) {
+                            ForEach(categories, id: \.type) { category in
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Theme.Colors.color(for: category.type))
+                                        .frame(width: 8, height: 8)
+                                    Text(category.title)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.Colors.secondaryText)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 32)
+                    }
+
+                    // Cards Grid
                     LazyVGrid(
                         columns: [
                             GridItem(.flexible(), spacing: 16),
@@ -43,14 +80,10 @@ struct DashboardView: View {
                         spacing: 16
                     ) {
                         ForEach(categories, id: \.type) { category in
-                            let size = simulatorManager.items
-                                .filter { $0.type == category.type }
-                                .reduce(0) { $0 + $1.size }
-
                             MinimalCard(
                                 title: category.title,
                                 type: category.type,
-                                size: size,
+                                size: sizeForType(category.type),
                                 helpText: category.help
                             )
                         }
@@ -58,8 +91,6 @@ struct DashboardView: View {
                     .padding(.horizontal, 32)
                     .padding(.bottom, 80) // Space for floating button
                 }
-
-                Spacer()
             }
             .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.3 : 1.0)
 
