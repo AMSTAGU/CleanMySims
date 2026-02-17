@@ -15,7 +15,10 @@ struct ContentView: View {
                 .frame(width: Theme.Layout.sidebarWidth)
                 .frame(maxHeight: .infinity)
 
-            Divider()
+            Rectangle()
+                .fill(Theme.Colors.border)
+                .frame(width: 1)
+                .ignoresSafeArea()
 
             Group {
                 switch selection {
