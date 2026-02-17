@@ -85,6 +85,9 @@ struct SidebarView: View {
                 selection: $selection,
                 hoveredItem: $hoveredItem
             )
+            
+            // Spacer/Padding between Dashboard and Categories
+            Spacer().frame(height: 12)
 
             // Categories
             ForEach([NavigationItem.cache, .devices, .runtimes, .builds, .deviceSupport], id: \.self) { item in
@@ -158,14 +161,31 @@ struct SidebarItem: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: item.icon)
-                .font(.system(size: 16))
-                .foregroundStyle(isSelected ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
-                .frame(width: 20)
+            // Icon with colored background
+            ZStack {
+                RoundedRectangle(cornerRadius: 8) // "Icônes un peu plus arrondies"
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor, accentColor.opacity(0.8)], // Slightly less opacity diff
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
+                    // Optional: subtle shadow on the shape itself to make it pop slightly
+                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+
+                Image(systemName: item.icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    // "Petite ombre derrière l'icône" (Small shadow behind the icon)
+                    .shadow(color: Color.black.opacity(0.2), radius: 1, x: 0, y: 1)
+            }
+            .frame(width: 24, height: 24)
 
             Text(item.label)
                 .font(Theme.Fonts.body)
-                .foregroundStyle(isSelected ? Theme.Colors.primaryText : Theme.Colors.secondaryText)
+                .foregroundStyle(Theme.Colors.primaryText) // Always primary text for readability
+                .fontWeight(isSelected ? .medium : .regular)
 
             Spacer()
 
@@ -174,19 +194,16 @@ struct SidebarItem: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 6)
         .background(
             ZStack {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primary.opacity(0.05)) // Subtle dark overlay for selection
-                        .padding(.horizontal, 8)
-                } else if isHovered {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Theme.Colors.hoverBackground)
-                        .padding(.horizontal, 8)
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.white.opacity(0.8)) // Less transparent white
+                        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
                 }
             }
+            .padding(.horizontal, 8) // "Espace sur le bord" but background fills the rest
         )
         .contentShape(Rectangle())
         .onTapGesture {
