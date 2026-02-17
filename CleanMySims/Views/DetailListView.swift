@@ -15,14 +15,22 @@ struct DetailListView: View {
 
     enum SortOrder {
         case defaultOrder
-        case sizeAsc
         case sizeDesc
+        case sizeAsc
 
         var label: String {
             switch self {
-            case .defaultOrder: return "Par defaut"
-            case .sizeAsc: return "Taille"
-            case .sizeDesc: return "Taille"
+            case .defaultOrder: return "Par défaut"
+            case .sizeAsc: return "Taille ↑"
+            case .sizeDesc: return "Taille ↓"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .defaultOrder: return "arrow.up.arrow.down"
+            case .sizeAsc: return "arrow.up"
+            case .sizeDesc: return "arrow.down"
             }
         }
 
@@ -67,13 +75,11 @@ struct DetailListView: View {
 
                 HStack(spacing: 12) {
                     // Sort button
-                    Menu {
-                        Button("Par defaut") { sortOrder = .defaultOrder }
-                        Button("Taille") { sortOrder = .sizeAsc }
-                        Button("Taille") { sortOrder = .sizeDesc }
-                    } label: {
+                    Button(action: {
+                        sortOrder = sortOrder.next
+                    }) {
                         HStack(spacing: 4) {
-                            Image(systemName: "arrow.up.arrow.down")
+                            Image(systemName: sortOrder.icon)
                             Text(sortOrder.label)
                         }
                         .font(Theme.Fonts.caption)
@@ -83,11 +89,11 @@ struct DetailListView: View {
                         .background(Theme.Colors.hoverBackground)
                         .cornerRadius(6)
                     }
-                    .menuStyle(.borderlessButton)
+                    .buttonStyle(.plain)
 
                     Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
-                        .font(Theme.Fonts.headline)
-                        .foregroundStyle(accentColor)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Theme.Colors.primaryText)
 
                     // Clean button
                     Button(action: {
@@ -101,7 +107,7 @@ struct DetailListView: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Theme.Colors.danger)
+                        .background(Color.red)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.plain)
