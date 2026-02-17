@@ -31,9 +31,13 @@ struct WindowAccessor: NSViewRepresentable {
         DispatchQueue.main.async {
             if let window = view.window {
                 window.titlebarAppearsTransparent = true
-                window.styleMask.insert(.fullSizeContentView)
-                // Revert to standard window behavior
-                // window.isMovableByWindowBackground = true // Optional, usually good for hidden title bar
+                window.titleVisibility = .hidden
+                // Ensure the style mask supports full size content and standard window features
+                window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+                window.isMovableByWindowBackground = true
+                window.isOpaque = false // Allow transparency for the rounded corners if using materials
+                window.backgroundColor = .clear // Important for containerBackground to show through
+                window.hasShadow = true
             }
         }
         return view

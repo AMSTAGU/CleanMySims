@@ -39,7 +39,8 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
+        .background(Color.clear)
+        .containerBackground(.thickMaterial, for: .window)
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
     }
 }
