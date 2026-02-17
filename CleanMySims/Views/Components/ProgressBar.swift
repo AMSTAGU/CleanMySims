@@ -33,8 +33,8 @@ struct ProgressBar: View {
                         .fill(color)
                         .frame(width: geometry.size.width * fakeProgress)
                         .onAppear {
-                            // Animate to 90% over 3 seconds
-                            withAnimation(.easeInOut(duration: 3.0)) {
+                            // Animate to 90% over 35 seconds
+                            withAnimation(.easeInOut(duration: 35.0)) {
                                 fakeProgress = 0.9
                             }
                         }
