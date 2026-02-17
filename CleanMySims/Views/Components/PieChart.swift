@@ -63,6 +63,7 @@ struct PieChart: View {
                     )
                     .fill(slices[index].color)
                     .scaleEffect(hoveredSlice == index ? 1.08 : 1.0)
+                    .animation(.easeInOut(duration: 0.2), value: hoveredSlice)
                 }
 
                 // Center circle (donut effect)
