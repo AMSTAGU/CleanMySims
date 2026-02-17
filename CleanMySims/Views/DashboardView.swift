@@ -52,39 +52,46 @@ struct DashboardView: View {
                                 type: category.type,
                                 size: size,
                                 helpText: category.help
-                            ) {
-                                // Navigate to detail view - handled by parent
-                            }
+                            )
                         }
                     }
                     .padding(.horizontal, 32)
+                    .padding(.bottom, 80) // Space for floating button
                 }
 
                 Spacer()
-
-                // Footer
-                Button(action: {
-                    simulatorManager.scan()
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                        Text("Rescan")
-                    }
-                    .font(Theme.Fonts.body)
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .cornerRadius(Theme.Layout.buttonCornerRadius)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Layout.buttonCornerRadius)
-                            .stroke(Theme.Colors.border, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 32)
             }
             .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.3 : 1.0)
+
+            // Floating Rescan button
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        simulatorManager.scan()
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Text("Rescan")
+                        }
+                        .font(Theme.Fonts.body)
+                        .foregroundStyle(Theme.Colors.primaryText)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.white)
+                        .cornerRadius(Theme.Layout.buttonCornerRadius)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Theme.Layout.buttonCornerRadius)
+                                .stroke(Theme.Colors.border, lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.08), radius: 8, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.bottom, 24)
+            }
 
             // Loading overlay
             if simulatorManager.isScanning {
