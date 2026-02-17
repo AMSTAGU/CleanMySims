@@ -13,6 +13,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             SidebarView(selection: $selection)
                 .frame(width: Theme.Layout.sidebarWidth)
+                .frame(maxHeight: .infinity)
 
             Divider()
 
