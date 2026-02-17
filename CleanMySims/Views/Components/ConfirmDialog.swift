@@ -54,7 +54,7 @@ struct ConfirmDialog: View {
             }
         }
         .padding(24)
-        .background(Color.white)
+        .background(VisualEffectBlur(material: .contentBackground, blendingMode: .withinWindow))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.15), radius: 20)
     }

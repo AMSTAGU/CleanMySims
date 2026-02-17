@@ -114,7 +114,7 @@ struct DashboardView: View {
                         .foregroundStyle(Theme.Colors.primaryText)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .background(Color.white)
+                        .background(VisualEffectBlur(material: .contentBackground, blendingMode: .withinWindow))
                         .cornerRadius(Theme.Layout.buttonCornerRadius)
                         .overlay(
                             RoundedRectangle(cornerRadius: Theme.Layout.buttonCornerRadius)
@@ -145,7 +145,6 @@ struct DashboardView: View {
                 )
             }
         }
-        .background(Theme.Colors.background)
         .onChange(of: simulatorManager.isScanning) { _, isScanning in
             if !isScanning {
                 // Scan just finished, show completion
@@ -187,7 +186,7 @@ struct LoadingOverlay: View {
                 .foregroundStyle(Theme.Colors.secondaryText)
         }
         .padding(32)
-        .background(Color.white)
+        .background(VisualEffectBlur(material: .contentBackground, blendingMode: .withinWindow))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.1), radius: 20)
     }

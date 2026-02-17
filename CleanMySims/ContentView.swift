@@ -16,9 +16,10 @@ struct ContentView: View {
                 .frame(maxHeight: .infinity)
 
             Rectangle()
-                .fill(Theme.Colors.border)
+                .fill(Color.black.opacity(0.1)) // Lighter grey as requested
                 .frame(width: 1)
                 .ignoresSafeArea()
+
 
             Group {
                 switch selection {
@@ -38,7 +39,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Theme.Colors.background)
+        .background(VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow).ignoresSafeArea())
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
     }
 }

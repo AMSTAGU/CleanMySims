@@ -115,13 +115,8 @@ struct DetailListView: View {
                 }
             }
             .padding(16)
-            .background(Color.white)
-            .overlay(
-                Rectangle()
-                    .fill(Theme.Colors.border)
-                    .frame(height: 1),
-                alignment: .bottom
-            )
+            // Removed header separator and explicit background to blend with window
+
 
             // Content
             if filteredItems.isEmpty {
@@ -150,7 +145,7 @@ struct DetailListView: View {
                 }
             }
         }
-        .background(Theme.Colors.background)
+
         .overlay {
             if showDeleteConfirm, let item = itemToDelete {
                 ZStack {

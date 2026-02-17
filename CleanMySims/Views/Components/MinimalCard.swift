@@ -33,7 +33,7 @@ struct MinimalCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-        .background(Color.white)
+        .background(VisualEffectBlur(material: .contentBackground, blendingMode: .withinWindow))
         .cornerRadius(Theme.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Layout.cardCornerRadius)

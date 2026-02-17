@@ -13,6 +13,7 @@ struct CleanMySimsApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(simulatorManager)
+                .background(WindowAccessor())
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -22,4 +23,21 @@ struct CleanMySimsApp: App {
             CommandGroup(replacing: .newItem) { }
         }
     }
+}
+
+struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.titlebarAppearsTransparent = true
+                window.styleMask.insert(.fullSizeContentView)
+                // Revert to standard window behavior
+                // window.isMovableByWindowBackground = true // Optional, usually good for hidden title bar
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
