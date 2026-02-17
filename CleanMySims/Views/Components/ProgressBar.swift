@@ -8,21 +8,15 @@ import SwiftUI
 struct ProgressBar: View {
     let progress: Double // 0.0 to 1.0
     let isIndeterminate: Bool
-    let gradientColors: [Color]
+    let color: Color
 
     @State private var animatedProgress: CGFloat = 0
-    @State private var indeterminateOffset: CGFloat = 0
+    @State private var phase: CGFloat = 0
 
-    init(progress: Double = 0, isIndeterminate: Bool = false, gradientColors: [Color]? = nil) {
+    init(progress: Double = 0, isIndeterminate: Bool = false, color: Color? = nil) {
         self.progress = progress
         self.isIndeterminate = isIndeterminate
-        self.gradientColors = gradientColors ?? [
-            Theme.Colors.cache,
-            Theme.Colors.simulator,
-            Theme.Colors.runtime,
-            Theme.Colors.build,
-            Theme.Colors.deviceSupport
-        ]
+        self.color = color ?? Theme.Colors.secondaryText.opacity(0.6)
     }
 
     var body: some View {
@@ -34,35 +28,23 @@ struct ProgressBar: View {
 
                 // Progress fill
                 if isIndeterminate {
-                    // Indeterminate animation
+                    // Indeterminate animation - slides from left to right
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(
-                            LinearGradient(
-                                colors: gradientColors,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(color)
                         .frame(width: geometry.size.width * 0.3)
-                        .offset(x: indeterminateOffset)
+                        .offset(x: -geometry.size.width * 0.3 + phase * (geometry.size.width * 1.3))
                         .onAppear {
                             withAnimation(
-                                .linear(duration: 1)
+                                .linear(duration: 1.2)
                                 .repeatForever(autoreverses: false)
                             ) {
-                                indeterminateOffset = geometry.size.width * 0.7
+                                phase = 1
                             }
                         }
                 } else {
                     // Determinate progress
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(
-                            LinearGradient(
-                                colors: gradientColors,
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(color)
                         .frame(width: geometry.size.width * animatedProgress)
                         .onAppear {
                             withAnimation(.easeInOut(duration: 0.3)) {
