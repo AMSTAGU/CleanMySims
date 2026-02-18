@@ -231,32 +231,15 @@ struct DetailRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let iconPath = item.appIconPath {
-                // If it's a png/icns file, load it directly to avoid system badges
-                if iconPath.lowercased().hasSuffix(".png") || iconPath.lowercased().hasSuffix(".icns"),
-                   let image = NSImage(contentsOfFile: iconPath) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                         .frame(width: 32, height: 32)
-                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else {
-                    // Fallback to workspace icon for folders/bundles if no direct image found
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: iconPath))
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 32, height: 32)
-                        // Add corner radius to resemble app icon if it's a build
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-            } else if item.type == .builds {
-                 // Fallback for builds without specific icon path (should satisfy "apply radius")
-                 Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
-                     .resizable()
-                     .aspectRatio(contentMode: .fit)
-                     .frame(width: 32, height: 32)
-                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
+            // Icon
+            // Icon
+            AsyncIconView(
+                itemPath: item.path,
+                appIconPath: item.appIconPath
+            )
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 32, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
