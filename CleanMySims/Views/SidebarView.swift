@@ -171,9 +171,12 @@ struct SidebarItem: View {
                 RoundedRectangle(cornerRadius: 8) // "Icônes un peu plus arrondies"
                     .fill(
                         LinearGradient(
-                            colors: [accentColor, accentColor.opacity(0.8)], // Slightly less opacity diff
-                            startPoint: .bottom,
-                            endPoint: .top
+                            colors: [
+                                accentColor, // Darker/Vibrant base
+                                accentColor.opacity(0.5) // Lighter/Translucent top
+                            ],
+                            startPoint: .bottomTrailing,
+                            endPoint: .topLeading
                         )
                     )
                     // Optional: subtle shadow on the shape itself to make it pop slightly
