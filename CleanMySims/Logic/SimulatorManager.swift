@@ -131,19 +131,31 @@ class SimulatorManager: ObservableObject {
             
             // Filter out small files if necessary, or keep everything
             if size > 0 {
+                
+                var finalName = name
+                var iconPath: String? = nil
+                
+                if type == .builds {
+                    if let details = findAppDetails(in: itemUrl) {
+                        finalName = details.name
+                        iconPath = details.iconPath
+                    }
+                }
+                
                 results.append(CleanableItem(
                     id: itemUrl.path,
-                    name: name,
+                    name: finalName,
                     path: itemUrl.path,
                     size: size,
                     type: type,
                     isDirectory: (try? itemUrl.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false,
-                    details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : nil // Show original folder name in details if we swapped name
+                    details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : (type == .builds && finalName != name) ? name : nil, 
+                    appIconPath: iconPath
                 ))
             }
         }
         
-        return results
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     
     private func scanVirtualDevices() -> [CleanableItem] {
@@ -182,10 +194,11 @@ class SimulatorManager: ObservableObject {
                 size: size,
                 type: .virtualDevice,
                 isDirectory: true,
-                details: details
+                details: details,
+                appIconPath: nil
             ))
         }
-        return results
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
     private func getDeviceInfos(url: URL) -> (name: String, runtime: String)? {
         let plistUrl = url.appendingPathComponent("device.plist")
@@ -220,6 +233,59 @@ class SimulatorManager: ObservableObject {
             }
         }
         return size
+    }
+
+    private func findAppDetails(in url: URL) -> (name: String, iconPath: String?)? {
+        let buildProductsPath = url.appendingPathComponent("Build/Products")
+        
+        // We only want to look a few levels deep to find the .app
+        // Typical path: Build/Products/Debug-iphonesimulator/MyApp.app
+        
+        guard let contents = try? fileManager.contentsOfDirectory(at: buildProductsPath, includingPropertiesForKeys: nil) else { return nil }
+        
+        // Prioritize simulator builds
+        let sortedContents = contents.sorted {
+            if $0.lastPathComponent.contains("iphonesimulator") { return true }
+            if $1.lastPathComponent.contains("iphonesimulator") { return false }
+            return $0.lastPathComponent < $1.lastPathComponent
+        }
+        
+        for folder in sortedContents {
+             guard let products = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { continue }
+             for product in products {
+                 if product.pathExtension == "app" {
+                     let appName = product.deletingPathExtension().lastPathComponent
+                     let iconPath = findIconFile(in: product)
+                     return (appName, iconPath)
+                 }
+             }
+        }
+        
+        return nil
+    }
+    
+    private func findIconFile(in appBundleUrl: URL) -> String? {
+        // Try to find AppIcon60x60@2x.png or similar
+        // Or check Info.plist for icon name
+        
+        // Strategy 1: Look for common AppIcon names directly
+        let commonNames = ["AppIcon60x60@2x.png", "AppIcon60x60@3x.png", "AppIcon76x76@2x~ipad.png"]
+        for name in commonNames {
+            let fileUrl = appBundleUrl.appendingPathComponent(name)
+            if fileManager.fileExists(atPath: fileUrl.path) {
+                return fileUrl.path
+            }
+        }
+        
+        // Strategy 2: Look for any png starting with AppIcon
+        if let contents = try? fileManager.contentsOfDirectory(at: appBundleUrl, includingPropertiesForKeys: nil) {
+            if let iconFile = contents.first(where: { $0.lastPathComponent.hasPrefix("AppIcon") && $0.pathExtension == "png" }) {
+                return iconFile.path
+            }
+        }
+        
+        // Fallback: Return bundle path (will use default icon logic but maybe with badge)
+        return appBundleUrl.path
     }
     
     // MARK: - Cleaning Logic

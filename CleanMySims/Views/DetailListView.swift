@@ -231,25 +231,49 @@ struct DetailRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            if let iconPath = item.appIconPath {
+                // If it's a png/icns file, load it directly to avoid system badges
+                if iconPath.lowercased().hasSuffix(".png") || iconPath.lowercased().hasSuffix(".icns"),
+                   let image = NSImage(contentsOfFile: iconPath) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                } else {
+                    // Fallback to workspace icon for folders/bundles if no direct image found
+                    Image(nsImage: NSWorkspace.shared.icon(forFile: iconPath))
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 32, height: 32)
+                        // Add corner radius to resemble app icon if it's a build
+                        .cornerRadius(item.type == .builds ? 6 : 0)
+                }
+            } else if item.type == .builds {
+                 // Fallback for builds without specific icon path (should satisfy "apply radius")
+                 Image(nsImage: NSWorkspace.shared.icon(forFile: item.path))
+                     .resizable()
+                     .aspectRatio(contentMode: .fit)
+                     .frame(width: 32, height: 32)
+                     .cornerRadius(6) 
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(Theme.Fonts.body)
+                    .font(Theme.Fonts.body.weight(.bold)) // Bold title
                     .foregroundStyle(Theme.Colors.primaryText)
                     .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    if let details = item.details {
-                        Text(details)
-                            .font(Theme.Fonts.caption)
-                            .foregroundStyle(Theme.Colors.secondaryText)
-                    }
-
-                    Text(item.path)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                if let details = item.details {
+                    Text(details)
+                        .font(Theme.Fonts.caption)
+                        .foregroundStyle(Theme.Colors.secondaryText)
                 }
+
+                Text(item.path)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
 
             Spacer()

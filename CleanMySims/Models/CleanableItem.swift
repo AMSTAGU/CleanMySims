@@ -6,11 +6,11 @@
 import Foundation
 
 enum CleanableItemType: String, CaseIterable {
+    case builds = "Builds"
     case cache = "Caches"
     case deviceSupport = "Device Support"
     case virtualDevice = "Simulators"
     case runtimes = "Runtimes"
-    case builds = "Builds"
 
     var iconName: String {
         switch self {
@@ -31,6 +31,7 @@ struct CleanableItem: Identifiable, Hashable {
     let type: CleanableItemType
     let isDirectory: Bool
     let details: String?
+    let appIconPath: String?
 
     var sizeString: String {
         ByteCountFormatter.string(fromByteCount: size, countStyle: .file)

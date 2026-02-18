@@ -93,7 +93,7 @@ struct SidebarView: View {
             Spacer().frame(height: 12)
 
             // Categories
-            ForEach([NavigationItem.cache, .devices, .runtimes, .builds, .deviceSupport], id: \.self) { item in
+            ForEach([NavigationItem.builds, .cache, .devices, .runtimes, .deviceSupport], id: \.self) { item in
                 SidebarItem(
                     item: item,
                     selection: $selection,
