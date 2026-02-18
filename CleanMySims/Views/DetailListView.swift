@@ -238,7 +238,8 @@ struct DetailRow: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 32, height: 32)
+                         .frame(width: 32, height: 32)
+                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else {
                     // Fallback to workspace icon for folders/bundles if no direct image found
                     Image(nsImage: NSWorkspace.shared.icon(forFile: iconPath))
@@ -246,7 +247,7 @@ struct DetailRow: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 32, height: 32)
                         // Add corner radius to resemble app icon if it's a build
-                        .cornerRadius(item.type == .builds ? 6 : 0)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             } else if item.type == .builds {
                  // Fallback for builds without specific icon path (should satisfy "apply radius")
@@ -254,7 +255,7 @@ struct DetailRow: View {
                      .resizable()
                      .aspectRatio(contentMode: .fit)
                      .frame(width: 32, height: 32)
-                     .cornerRadius(6) 
+                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             VStack(alignment: .leading, spacing: 2) {
