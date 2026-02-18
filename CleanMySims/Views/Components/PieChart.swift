@@ -102,15 +102,6 @@ struct PieChart: View {
                         .shadow(color: slice.color.opacity(0.3), radius: 5, x: 0, y: 0) // Inner/Outer glow
                         .scaleEffect(isSelected ? 1.05 : 1.0)
                         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: activeSliceIndex)
-                        .onHover { hovering in
-                            if hovering {
-                                hoveredSlice = index
-                            } else {
-                                if hoveredSlice == index {
-                                    hoveredSlice = nil
-                                }
-                            }
-                        }
                 }
 
                 // Hover label in center (no background, so transparent)

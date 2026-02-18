@@ -18,10 +18,12 @@ struct DashboardView: View {
         (.deviceSupport, "Device Support", "Support files to connect physical iPhone/iPad to Xcode")
     ]
 
+    private func itemsForType(_ type: CleanableItemType) -> [CleanableItem] {
+        simulatorManager.items.filter { $0.type == type }
+    }
+
     private func sizeForType(_ type: CleanableItemType) -> Int64 {
-        simulatorManager.items
-            .filter { $0.type == type }
-            .reduce(0) { $0 + $1.size }
+        itemsForType(type).reduce(0) { $0 + $1.size }
     }
 
     private var pieSlices: [PieSlice] {
@@ -36,44 +38,96 @@ struct DashboardView: View {
         }
     }
 
+    /// Placeholder slices for when data hasn't loaded yet
+    private var placeholderSlices: [PieSlice] {
+        categories.map { category in
+            PieSlice(
+                value: 1.0,
+                color: Theme.Colors.color(for: category.type),
+                label: category.title,
+                size: "—"
+            )
+        }
+    }
+
+    private var hasData: Bool {
+        simulatorManager.totalSize > 0
+    }
+
     var body: some View {
         ZStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     // Header
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         Text("Recoverable Space")
-                            .font(Theme.Fonts.body)
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Theme.Colors.secondaryText)
+                            .textCase(.uppercase)
+                            .tracking(1.2)
 
-                        Text(ByteCountFormatter.string(fromByteCount: simulatorManager.totalSize, countStyle: .file))
-                            .font(Theme.Fonts.title)
-                            .foregroundStyle(Theme.Colors.primaryText)
-                            .contentTransition(.numericText(value: Double(simulatorManager.totalSize)))
+                        if hasData {
+                            Text(ByteCountFormatter.string(fromByteCount: simulatorManager.totalSize, countStyle: .file))
+                                .font(.system(size: 40, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.Colors.primaryText)
+                                .contentTransition(.numericText(value: Double(simulatorManager.totalSize)))
+                        } else {
+                            Text("—")
+                                .font(.system(size: 40, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.Colors.secondaryText.opacity(0.4))
+                        }
                     }
-                    .padding(.top, 40)
-                    .padding(.bottom, 24)
+                    .padding(.top, 36)
+                    .padding(.bottom, 28)
 
-                    // Pie Chart
-                    if simulatorManager.totalSize > 0 {
-                        PieChart(slices: pieSlices, size: 180)
-                            .padding(.bottom, 24)
+                    // Pie Chart — always visible
+                    ZStack {
+                        PieChart(slices: hasData ? pieSlices : placeholderSlices, size: 180)
+                            .opacity(hasData ? 1.0 : 0.25)
 
-                        // Legend
-                        HStack(spacing: 16) {
-                            ForEach(categories, id: \.type) { category in
-                                HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(Theme.Colors.color(for: category.type))
-                                        .frame(width: 8, height: 8)
+                        if !hasData {
+                            Text("Scanning…")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.Colors.secondaryText)
+                        }
+                    }
+                    .padding(.bottom, 20)
+                    .animation(.easeInOut(duration: 0.4), value: hasData)
+
+                    // Legend — always visible
+                    HStack(spacing: 20) {
+                        ForEach(categories, id: \.type) { category in
+                            let size = sizeForType(category.type)
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(Theme.Colors.color(for: category.type))
+                                    .frame(width: 8, height: 8)
+                                VStack(alignment: .leading, spacing: 0) {
                                     Text(category.title)
-                                        .font(.system(size: 10))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(Theme.Colors.primaryText)
+                                    Text(hasData ? ByteCountFormatter.string(fromByteCount: size, countStyle: .file) : "—")
+                                        .font(.system(size: 9, weight: .regular))
                                         .foregroundStyle(Theme.Colors.secondaryText)
                                 }
                             }
                         }
-                        .padding(.bottom, 32)
                     }
+                    .padding(.bottom, 28)
+
+                    // Section divider
+                    HStack {
+                        Text("Categories")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+                        Rectangle()
+                            .fill(Theme.Colors.border)
+                            .frame(height: 1)
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 16)
 
                     // Cards Grid
                     LazyVGrid(
@@ -88,20 +142,18 @@ struct DashboardView: View {
                                 title: category.title,
                                 type: category.type,
                                 size: sizeForType(category.type),
+                                itemCount: itemsForType(category.type).count,
                                 helpText: category.help
                             )
                         }
                     }
                     .padding(.horizontal, 32)
-                    .padding(.bottom, 80) // Space for floating button
+                    .padding(.bottom, 80)
                 }
             }
             .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.3 : 1.0)
 
-            if (simulatorManager.isScanning || simulatorManager.isCleaning) {
-                // Empty view to occupy space? No, we just hide the button.
-                // Or we can keep the spacer.
-            } else {
+            if !(simulatorManager.isScanning || simulatorManager.isCleaning) {
                 // Floating Rescan button
                 VStack {
                     Spacer()
@@ -129,13 +181,12 @@ struct DashboardView: View {
                         .buttonStyle(.plain)
                         Spacer()
                     }
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 20)
                 }
             }
         }
         .onChange(of: simulatorManager.isScanning) { _, isScanning in
             if !isScanning {
-                // Scan just finished, show completion
                 showScanComplete = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     showScanComplete = false
@@ -144,7 +195,6 @@ struct DashboardView: View {
         }
         .onChange(of: simulatorManager.isCleaning) { _, isCleaning in
             if !isCleaning {
-                // Clean just finished, show completion
                 showCleanComplete = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     showCleanComplete = false
@@ -158,7 +208,6 @@ struct DashboardView: View {
         }
     }
 }
-
 
 
 #Preview {

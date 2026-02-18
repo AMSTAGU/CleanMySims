@@ -9,6 +9,7 @@ struct MinimalCard: View {
     let title: String
     let type: CleanableItemType
     let size: Int64
+    let itemCount: Int
     let helpText: String
 
     var body: some View {
@@ -33,11 +34,11 @@ struct MinimalCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-        .background(Color.white.opacity(0.6)) // "Blanc avec une opacité très réduite"
+        .background(Color.white.opacity(0.45))
         .cornerRadius(Theme.Layout.cardCornerRadius)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Layout.cardCornerRadius)
-                .stroke(Color.white.opacity(0.8), lineWidth: 1) // "Juste un contour blanc"
+                .stroke(Color.white.opacity(0.8), lineWidth: 1)
         )
     }
 }
@@ -47,6 +48,7 @@ struct MinimalCard: View {
         title: "Caches",
         type: .cache,
         size: 4_200_000_000,
+        itemCount: 12,
         helpText: "Données temporaires des simulateurs"
     )
     .padding()
