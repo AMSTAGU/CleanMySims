@@ -55,12 +55,37 @@ struct ContentView: View {
             }
             
             if simulatorManager.isCleaning {
-                Color.black.opacity(0.01)
+                Color.black.opacity(0.01) // Subtle background to block taps
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle()) // Ensure it catches taps
                     .onTapGesture { } // Block taps
                 
                 LoadingOverlay(title: "Cleaning...", isIndeterminate: true)
+            }
+
+            // Global Confirmation Modal
+            if simulatorManager.showingConfirmation {
+                Color.black.opacity(0.4) // Darker background for modal focus
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        simulatorManager.cancelAction()
+                    }
+                
+                ConfirmDialog(
+                    title: simulatorManager.confirmationTitle,
+                    message: simulatorManager.confirmationMessage,
+                    detail: simulatorManager.confirmationDetail,
+                    confirmTitle: simulatorManager.confirmationActionTitle,
+                    isDangerous: simulatorManager.isConfirmationDangerous,
+                    onConfirm: {
+                        simulatorManager.confirmAction()
+                    },
+                    onCancel: {
+                        simulatorManager.cancelAction()
+                    }
+                )
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)

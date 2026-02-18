@@ -7,12 +7,22 @@
 
 import Foundation
 import Combine
+import SwiftUI // Required for withAnimation
 
 class SimulatorManager: ObservableObject {
     @Published var items: [CleanableItem] = []
     @Published var isScanning = false
     @Published var isCleaning = false
     @Published var totalSize: Int64 = 0
+    
+    // Global Confirmation State
+    @Published var showingConfirmation = false
+    @Published var confirmationTitle = ""
+    @Published var confirmationMessage = ""
+    @Published var confirmationDetail: String? = nil
+    @Published var confirmationActionTitle = "Confirm"
+    @Published var isConfirmationDangerous = false
+    private var pendingConfirmationAction: (() -> Void)?
     
     private let fileManager = FileManager.default
     
@@ -263,17 +273,75 @@ class SimulatorManager: ObservableObject {
             defer { isCleaning = false }
 
             for item in items {
-                try? await Task.detached(priority: .background) {
-                    if item.isDirectory {
+                // Ensure we interact with fileManager on a background thread if needed, or safely here
+                // removeItem can throw, so we handle it
+                await Task.detached(priority: .background) {
+                    do {
                         try FileManager.default.removeItem(atPath: item.path)
-                    } else {
-                        try FileManager.default.removeItem(atPath: item.path)
+                    } catch {
+                        print("Failed to delete \(item.path): \(error)")
                     }
                 }.value
             }
 
             // Rescan after cleaning
             scan()
+        }
+    }
+
+    // MARK: - Global Confirmation Flow
+    
+    func proposeDelete(item: CleanableItem) {
+        confirmationTitle = "Delete this item?"
+        confirmationMessage = "\(item.sizeString) will be freed."
+        confirmationDetail = "\"\(item.name)\""
+        confirmationActionTitle = "Delete"
+        isConfirmationDangerous = true
+        
+        pendingConfirmationAction = { [weak self] in
+            self?.delete(item: item)
+        }
+        
+        withAnimation {
+            showingConfirmation = true
+        }
+    }
+    
+    func proposeClean(items: [CleanableItem]) {
+        let size = items.reduce(0) { $0 + $1.size }
+        let sizeString = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        
+        confirmationTitle = "Clean selected items?"
+        confirmationMessage = "\(items.count) items, \(sizeString) will be deleted."
+        confirmationDetail = nil
+        confirmationActionTitle = "Clean"
+        isConfirmationDangerous = true
+        
+        pendingConfirmationAction = { [weak self] in
+            self?.cleanItems(items)
+        }
+        
+        withAnimation {
+            showingConfirmation = true
+        }
+    }
+    
+    func confirmAction() {
+        pendingConfirmationAction?()
+        closeConfirmation()
+    }
+    
+    func cancelAction() {
+        closeConfirmation()
+    }
+    
+    private func closeConfirmation() {
+        withAnimation {
+            showingConfirmation = false
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.pendingConfirmationAction = nil
         }
     }
 }

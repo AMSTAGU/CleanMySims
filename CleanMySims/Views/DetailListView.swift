@@ -66,56 +66,82 @@ struct DetailListView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header
+            // Header
+            // Header
             HStack {
                 Text(category.rawValue)
-                    .font(Theme.Fonts.headline)
+                    .font(.system(size: 24, weight: .bold)) // Intermediate size, less huge than .title
                     .foregroundStyle(Theme.Colors.primaryText)
 
                 Spacer()
 
                 HStack(spacing: 12) {
-                    // Sort button
+                    // Sort Button (Toggle)
                     Button(action: {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             sortOrder = sortOrder.next
                         }
                     }) {
                         Image(systemName: sortOrder.icon)
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.Colors.secondaryText)
-                            .frame(width: 28, height: 28)
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 32, height: 32) // Square box
                             .background(Theme.Colors.hoverBackground)
-                            .cornerRadius(6)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
                     .help(sortOrder.label)
 
+                    // Size Display
                     Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Theme.Colors.primaryText)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.Colors.secondaryText)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(Theme.Colors.hoverBackground)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                        )
+                        .fixedSize() // Prevent wrapping
 
-                    // Clean button
+                    // Clean Button
                     Button(action: {
                         showCleanAllConfirm = true
                     }) {
                         HStack(spacing: 6) {
-                            Image(systemName: "trash")
+                            Image(systemName: "trash.fill")
                             Text("Clean")
+                                .fontWeight(.semibold)
                         }
-                        .font(Theme.Fonts.caption)
+                        .font(.system(size: 13))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.red)
-                        .cornerRadius(6)
+                        .padding(.horizontal, 16)
+                        .frame(height: 32)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: "FF3B30"), Color(hex: "FF3B30").opacity(0.8)], // Red gradient
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                        )
+                        .shadow(color: Color.red.opacity(0.3), radius: 2, y: 1)
                     }
                     .buttonStyle(.plain)
                     .disabled(filteredItems.isEmpty)
                     .opacity(filteredItems.isEmpty ? 0.5 : 1.0)
                 }
             }
-            .padding(16)
-            // Removed header separator and explicit background to blend with window
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            // Removed separators/backgrounds for the airy feel
 
 
             // Content
@@ -238,9 +264,9 @@ struct DetailRow: View {
                     Button(action: {
                         NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
                     }) {
-                        Image(systemName: "folder")
+                        Image(systemName: "folder.fill") // Use fill for better color visibility
                             .font(.system(size: 14))
-                            .foregroundStyle(accentColor)
+                            .foregroundStyle(Color(hex: "007AFF")) // Finder Blue
                     }
                     .buttonStyle(.plain)
                     .help("Reveal in Finder")
