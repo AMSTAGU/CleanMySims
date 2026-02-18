@@ -15,12 +15,12 @@ struct Theme {
         static let border = Color(hex: "E5E5E5")
         static let hoverBackground = Color(hex: "EEEEEE")
 
-        // Category accent colors (pastel but vibrant)
-        static let cache = Color(hex: "7EB6FF")        // Sky blue
-        static let simulator = Color(hex: "FF9EAA")    // Rose pink
-        static let runtime = Color(hex: "7DD3C0")      // Mint green
-        static let build = Color(hex: "FFB380")        // Coral peach
-        static let deviceSupport = Color(hex: "A8A4FF") // Periwinkle
+        // Category accent colors (Vibrant/Neon for "Superwhisper" feel)
+        static let cache = Color(hex: "007AFF")        // Vivid Blue (System Blue-ish but brighter)
+        static let simulator = Color(hex: "FF2D55")    // Vibrant Pink/Red
+        static let runtime = Color(hex: "00C853")      // Vivid Green
+        static let build = Color(hex: "FF9500")        // Vivid Orange
+        static let deviceSupport = Color(hex: "5856D6") // Vivid Purple
 
         // Semantic colors
         static let danger = Color(hex: "E88B8B")       // Soft coral

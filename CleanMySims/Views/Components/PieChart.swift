@@ -58,24 +58,59 @@ struct PieChart: View {
             }
             currentAngle += sliceAngle
         }
-
+        
         return nil
     }
+
+    // Helper to calculate start angle for a slice index
+    private func angle(for index: Int) -> Angle {
+        var currentAngle = 0.0
+        for i in 0..<index {
+            currentAngle += total > 0 ? (slices[i].value / total) * 360 : 0
+        }
+        return Angle.degrees(currentAngle - 90) // Start from top (-90 degrees)
+    }
+
+    private let innerRadiusRatio: CGFloat = 0.55
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Draw all slices
-                ForEach(sliceAngles.indices, id: \.self) { index in
-                    let slice = sliceAngles[index]
-                    PieSliceShape(
-                        startAngle: slice.start,
-                        endAngle: slice.end,
-                        innerRadiusRatio: 0.55 // Define donut hole size
-                    )
-                    .fill(slices[index].color)
-                    .scaleEffect(activeSliceIndex == index ? 1.05 : 1.0) // Subtle scale for selection
-                    .animation(.easeInOut(duration: 0.2), value: activeSliceIndex)
+                // Slices
+                ForEach(0..<slices.count, id: \.self) { index in
+                    let slice = slices[index]
+                    let isSelected = (activeSliceIndex == index)
+                    let startAngle = angle(for: index)
+                    let endAngle = angle(for: index + 1)
+                    
+                    // Glassy/Liquid Effect
+                    PieSliceShape(startAngle: startAngle, endAngle: endAngle, innerRadiusRatio: innerRadiusRatio)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    slice.color.opacity(0.6), // Was 0.8
+                                    slice.color.opacity(0.2)  // Was 0.4
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay(
+                            PieSliceShape(startAngle: startAngle, endAngle: endAngle, innerRadiusRatio: innerRadiusRatio)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 1) // Glass edge
+                        )
+                        .shadow(color: slice.color.opacity(0.3), radius: 5, x: 0, y: 0) // Inner/Outer glow
+                        .scaleEffect(isSelected ? 1.05 : 1.0)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: activeSliceIndex)
+                        .onHover { hovering in
+                            if hovering {
+                                hoveredSlice = index
+                            } else {
+                                if hoveredSlice == index {
+                                    hoveredSlice = nil
+                                }
+                            }
+                        }
                 }
 
                 // Hover label in center (no background, so transparent)
