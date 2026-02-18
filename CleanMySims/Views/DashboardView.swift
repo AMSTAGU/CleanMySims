@@ -38,7 +38,7 @@ struct DashboardView: View {
 
     var body: some View {
         ZStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     // Header
                     VStack(spacing: 4) {
