@@ -14,6 +14,12 @@ class SimulatorManager: ObservableObject {
     @Published var isScanning = false
     @Published var isCleaning = false
     @Published var totalSize: Int64 = 0
+    @Published var categoryStats: [CleanableItemType: CategoryStats] = [:]
+    
+    struct CategoryStats {
+        var count: Int
+        var size: Int64
+    }
     
     // Global Confirmation State
     @Published var showingConfirmation = false
@@ -103,8 +109,18 @@ class SimulatorManager: ObservableObject {
                 IconThumbnailCache.shared.preloadSystemIcon(forPath: item.path)
             }
             
+            // Calculate stats efficiently
+            var stats: [CleanableItemType: CategoryStats] = [:]
+            for item in newItems {
+                var current = stats[item.type] ?? CategoryStats(count: 0, size: 0)
+                current.count += 1
+                current.size += item.size
+                stats[item.type] = current
+            }
+            
             DispatchQueue.main.async {
                 self.items = newItems
+                self.categoryStats = stats
                 self.totalSize = size
                 self.isScanning = false
             }
@@ -427,6 +443,14 @@ class SimulatorManager: ObservableObject {
         // Remove from list
         DispatchQueue.main.async {
             self.items.removeAll { $0.id == item.id }
+            
+            // Update stats
+            if var stats = self.categoryStats[item.type] {
+                stats.count -= 1
+                stats.size -= item.size
+                self.categoryStats[item.type] = stats
+            }
+            
             self.totalSize -= item.size
         }
     }

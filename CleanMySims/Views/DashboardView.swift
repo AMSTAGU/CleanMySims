@@ -18,17 +18,11 @@ struct DashboardView: View {
         (.deviceSupport, "Device Support", "Support files to connect physical iPhone/iPad to Xcode")
     ]
 
-    private func itemsForType(_ type: CleanableItemType) -> [CleanableItem] {
-        simulatorManager.items.filter { $0.type == type }
-    }
-
-    private func sizeForType(_ type: CleanableItemType) -> Int64 {
-        itemsForType(type).reduce(0) { $0 + $1.size }
-    }
-
     private var pieSlices: [PieSlice] {
         categories.map { category in
-            let size = sizeForType(category.type)
+            let stats = simulatorManager.categoryStats[category.type]
+            let size = stats?.size ?? 0
+            
             return PieSlice(
                 value: Double(size),
                 color: Theme.Colors.color(for: category.type),
@@ -97,7 +91,9 @@ struct DashboardView: View {
                     // Legend — always visible
                     HStack(spacing: 20) {
                         ForEach(categories, id: \.type) { category in
-                            let size = sizeForType(category.type)
+                            let stats = simulatorManager.categoryStats[category.type]
+                            let size = stats?.size ?? 0
+                            
                             HStack(spacing: 6) {
                                 Circle()
                                     .fill(Theme.Colors.color(for: category.type))
@@ -138,11 +134,13 @@ struct DashboardView: View {
                         spacing: 16
                     ) {
                         ForEach(categories, id: \.type) { category in
+                            let stats = simulatorManager.categoryStats[category.type]
+                            
                             MinimalCard(
                                 title: category.title,
                                 type: category.type,
-                                size: sizeForType(category.type),
-                                itemCount: itemsForType(category.type).count,
+                                size: stats?.size ?? 0,
+                                itemCount: stats?.count ?? 0,
                                 helpText: category.help
                             )
                         }
