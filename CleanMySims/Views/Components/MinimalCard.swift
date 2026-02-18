@@ -11,6 +11,7 @@ struct MinimalCard: View {
     let size: Int64
     let itemCount: Int
     let helpText: String
+    var overrideSizeString: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,7 +29,7 @@ struct MinimalCard: View {
                 .font(Theme.Fonts.subheadline)
                 .foregroundStyle(Theme.Colors.primaryText)
 
-            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+            Text(overrideSizeString ?? ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
                 .font(Theme.Fonts.body)
                 .foregroundStyle(Theme.Colors.secondaryText)
         }

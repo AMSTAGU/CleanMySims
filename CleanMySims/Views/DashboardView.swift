@@ -79,11 +79,7 @@ struct DashboardView: View {
                         PieChart(slices: hasData ? pieSlices : placeholderSlices, size: 180)
                             .opacity(hasData ? 1.0 : 0.25)
 
-                        if !hasData {
-                            Text("Scanning…")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Theme.Colors.secondaryText)
-                        }
+
                     }
                     .padding(.bottom, 20)
                     .animation(.easeInOut(duration: 0.4), value: hasData)
@@ -141,7 +137,8 @@ struct DashboardView: View {
                                 type: category.type,
                                 size: stats?.size ?? 0,
                                 itemCount: stats?.count ?? 0,
-                                helpText: category.help
+                                helpText: category.help,
+                                overrideSizeString: hasData ? nil : "—"
                             )
                         }
                     }
