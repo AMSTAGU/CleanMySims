@@ -1,51 +1,36 @@
-
 import SwiftUI
 
+/// Displays an app icon thumbnail for a cleanable item.
+///
+/// **Fully stateless** — no @State, no onAppear, no async, no callbacks.
+/// Icons are pre-loaded during the scan phase (see `SimulatorManager`).
+/// The view simply reads from `IconThumbnailCache` synchronously.
 struct AsyncIconView: View {
     let itemPath: String
     let appIconPath: String?
-    
-    @State private var image: NSImage?
-    
-    // Simple memory cache
-    private static var iconCache = NSCache<NSString, NSImage>()
-    
+
     var body: some View {
-        Group {
-            if let image = image {
-                Image(nsImage: image)
-                    .resizable()
-            } else {
-                // Placeholder while loading
-                Color.gray.opacity(0.1)
+        // Priority: app icon thumbnail > system icon for path
+        let icon: NSImage? = {
+            if let path = appIconPath {
+                return IconThumbnailCache.shared.thumbnail(forKey: path)
+            }
+            return IconThumbnailCache.shared.thumbnail(forKey: itemPath)
+        }()
+
+        if let icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+        } else {
+            // Fallback (should rarely happen — icons are pre-loaded during scan)
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.gray.opacity(0.08))
+                Image(systemName: "doc.fill")
+                    .font(.system(size: 16, weight: .light))
+                    .foregroundStyle(.tertiary)
             }
         }
-        .task {
-            await loadIcon()
-        }
-    }
-    
-    private func loadIcon() async {
-        // Check cache first
-        let cacheKey = (appIconPath ?? itemPath) as NSString
-        if let cached = AsyncIconView.iconCache.object(forKey: cacheKey) {
-            self.image = cached
-            return
-        }
-        
-        // Load in background
-        let loadedImage = await Task.detached(priority: .userInitiated) { () -> NSImage in
-            if let iconPath = appIconPath,
-               (iconPath.lowercased().hasSuffix(".png") || iconPath.lowercased().hasSuffix(".icns")),
-               let img = NSImage(contentsOfFile: iconPath) {
-                return img
-            } else {
-                return NSWorkspace.shared.icon(forFile: itemPath)
-            }
-        }.value
-        
-        // Cache and update
-        AsyncIconView.iconCache.setObject(loadedImage, forKey: cacheKey)
-        self.image = loadedImage
     }
 }

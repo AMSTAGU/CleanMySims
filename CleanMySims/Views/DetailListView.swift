@@ -43,7 +43,8 @@ struct DetailListView: View {
         }
     }
 
-    var filteredItems: [CleanableItem] {
+    // Compute once, reuse everywhere
+    private var currentItems: [CleanableItem] {
         let items = simulatorManager.items.filter { $0.type == category }
         switch sortOrder {
         case .defaultOrder:
@@ -55,22 +56,15 @@ struct DetailListView: View {
         }
     }
 
-    var totalSize: Int64 {
-        filteredItems.reduce(0) { $0 + $1.size }
-    }
-
-    var accentColor: Color {
-        Theme.Colors.color(for: category)
-    }
-
     var body: some View {
+        let items = currentItems
+        let total = items.reduce(0 as Int64) { $0 + $1.size }
+
         VStack(spacing: 0) {
-            // Header
-            // Header
             // Header
             HStack {
                 Text(category.rawValue)
-                    .font(.system(size: 24, weight: .bold)) // Intermediate size, less huge than .title
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Theme.Colors.primaryText)
 
                 Spacer()
@@ -84,7 +78,7 @@ struct DetailListView: View {
                     }) {
                         Image(systemName: sortOrder.icon)
                             .font(.system(size: 14, weight: .medium))
-                            .frame(width: 32, height: 32) // Square box
+                            .frame(width: 32, height: 32)
                             .background(Theme.Colors.hoverBackground)
                             .cornerRadius(8)
                             .overlay(
@@ -96,7 +90,7 @@ struct DetailListView: View {
                     .help(sortOrder.label)
 
                     // Size Display
-                    Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+                    Text(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.Colors.secondaryText)
                         .padding(.horizontal, 12)
@@ -107,7 +101,7 @@ struct DetailListView: View {
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color.black.opacity(0.05), lineWidth: 1)
                         )
-                        .fixedSize() // Prevent wrapping
+                        .fixedSize()
 
                     // Clean Button
                     Button(action: {
@@ -126,7 +120,7 @@ struct DetailListView: View {
                             Capsule()
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color(hex: "FF3B30"), Color(hex: "FF3B30").opacity(0.8)], // Red gradient
+                                        colors: [Color(hex: "FF3B30"), Color(hex: "FF3B30").opacity(0.8)],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
@@ -135,17 +129,15 @@ struct DetailListView: View {
                         .shadow(color: Color.red.opacity(0.3), radius: 2, y: 1)
                     }
                     .buttonStyle(.plain)
-                    .disabled(filteredItems.isEmpty)
-                    .opacity(filteredItems.isEmpty ? 0.5 : 1.0)
+                    .disabled(items.isEmpty)
+                    .opacity(items.isEmpty ? 0.5 : 1.0)
                 }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 20)
-            // Removed separators/backgrounds for the airy feel
-
 
             // Content
-            if filteredItems.isEmpty {
+            if items.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 48))
@@ -158,10 +150,10 @@ struct DetailListView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(filteredItems) { item in
+                        ForEach(items) { item in
                             DetailRow(
                                 item: item,
-                                accentColor: accentColor
+                                accentColor: Theme.Colors.color(for: category)
                             ) {
                                 itemToDelete = item
                                 showDeleteConfirm = true
@@ -204,12 +196,12 @@ struct DetailListView: View {
 
                     ConfirmDialog(
                         title: "Clean \(category.rawValue)?",
-                        message: "\(filteredItems.count) items, \(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file)) will be deleted.",
+                        message: "\(items.count) items, \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) will be deleted.",
                         detail: nil,
                         confirmTitle: "Clean",
                         isDangerous: true,
                         onConfirm: {
-                            simulatorManager.cleanItems(filteredItems)
+                            simulatorManager.cleanItems(items)
                             showCleanAllConfirm = false
                         },
                         onCancel: {
@@ -232,18 +224,16 @@ struct DetailRow: View {
     var body: some View {
         HStack(spacing: 12) {
             // Icon
-            // Icon
             AsyncIconView(
                 itemPath: item.path,
                 appIconPath: item.appIconPath
             )
-            .aspectRatio(contentMode: .fit)
             .frame(width: 32, height: 32)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(Theme.Fonts.body.weight(.bold)) // Bold title
+                    .font(Theme.Fonts.body.weight(.bold))
                     .foregroundStyle(Theme.Colors.primaryText)
                     .lineLimit(1)
 
@@ -266,35 +256,33 @@ struct DetailRow: View {
                 .font(Theme.Fonts.mono)
                 .foregroundStyle(Theme.Colors.secondaryText)
 
-            // Actions (show on hover)
-            if isHovered {
-                HStack(spacing: 12) {
-                    Button(action: {
-                        NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
-                    }) {
-                        Image(systemName: "folder.fill") // Use fill for better color visibility
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color(hex: "007AFF")) // Finder Blue
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reveal in Finder")
-
-                    Button(action: onDelete) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Theme.Colors.danger)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Delete")
+            // Actions — ALWAYS present, visibility controlled by opacity (no layout change)
+            HStack(spacing: 12) {
+                Button(action: {
+                    NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
+                }) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color(hex: "007AFF"))
                 }
-                .transition(.opacity)
+                .buttonStyle(.plain)
+                .help("Reveal in Finder")
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.Colors.danger)
+                }
+                .buttonStyle(.plain)
+                .help("Delete")
             }
+            .opacity(isHovered ? 1 : 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(isHovered ? Theme.Colors.hoverBackground : Color.clear)
         .onHover { hovered in
-            withAnimation(.easeInOut(duration: 0.1)) {
+            withAnimation(.easeInOut(duration: 0.15)) {
                 isHovered = hovered
             }
         }

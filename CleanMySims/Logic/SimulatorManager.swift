@@ -98,6 +98,11 @@ class SimulatorManager: ObservableObject {
             
             let size = newItems.reduce(0) { $0 + $1.size }
             
+            // Pre-load system icons for ALL items (we're on a background thread)
+            for item in newItems {
+                IconThumbnailCache.shared.preloadSystemIcon(forPath: item.path)
+            }
+            
             DispatchQueue.main.async {
                 self.items = newItems
                 self.totalSize = size
@@ -139,6 +144,10 @@ class SimulatorManager: ObservableObject {
                     if let details = findAppDetails(in: itemUrl) {
                         finalName = details.name
                         iconPath = details.iconPath
+                        // Pre-load thumbnail during scan (background thread — CGImageSource is thread-safe)
+                        if let path = iconPath {
+                            IconThumbnailCache.shared.preloadThumbnail(forKey: path, fromPath: path)
+                        }
                     }
                 }
                 
@@ -284,8 +293,8 @@ class SimulatorManager: ObservableObject {
             }
         }
         
-        // Fallback: Return bundle path (will use default icon logic but maybe with badge)
-        return appBundleUrl.path
+        // No icon found — return nil so AsyncIconView uses system icon fallback
+        return nil
     }
     
     // MARK: - Cleaning Logic
