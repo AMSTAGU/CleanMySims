@@ -63,6 +63,7 @@ enum NavigationItem: Hashable, Identifiable, CaseIterable {
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
     @State private var hoveredItem: NavigationItem?
+    @EnvironmentObject var simulatorManager: SimulatorManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -85,6 +86,8 @@ struct SidebarView: View {
                 selection: $selection,
                 hoveredItem: $hoveredItem
             )
+            .disabled(simulatorManager.isScanning || simulatorManager.isCleaning)
+            .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.5 : 1.0)
             
             // Spacer/Padding between Dashboard and Categories
             Spacer().frame(height: 12)
@@ -96,6 +99,8 @@ struct SidebarView: View {
                     selection: $selection,
                     hoveredItem: $hoveredItem
                 )
+                .disabled(simulatorManager.isScanning || simulatorManager.isCleaning)
+                .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.5 : 1.0)
             }
 
             Spacer()
