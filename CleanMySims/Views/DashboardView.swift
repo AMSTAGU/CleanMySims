@@ -98,51 +98,39 @@ struct DashboardView: View {
             }
             .opacity(simulatorManager.isScanning || simulatorManager.isCleaning ? 0.3 : 1.0)
 
-            // Floating Rescan button
-            VStack {
-                Spacer()
-                HStack {
+            if (simulatorManager.isScanning || simulatorManager.isCleaning) {
+                // Empty view to occupy space? No, we just hide the button.
+                // Or we can keep the spacer.
+            } else {
+                // Floating Rescan button
+                VStack {
                     Spacer()
-                    Button(action: {
-                        simulatorManager.scan()
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                            Text("Rescan")
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            simulatorManager.scan()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Text("Rescan")
+                            }
+                            .font(Theme.Fonts.body)
+                            .foregroundStyle(Theme.Colors.primaryText)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.8))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white, lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(0.1), radius: 10, y: 4)
                         }
-                        .font(Theme.Fonts.body)
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.8))
-                        .clipShape(Capsule())
-                        .overlay(
-                            Capsule()
-                                .stroke(Color.white, lineWidth: 1)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 10, y: 4)
+                        .buttonStyle(.plain)
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
-                    Spacer()
+                    .padding(.bottom, 24)
                 }
-                .padding(.bottom, 24)
-            }
-
-            // Loading overlay
-            if simulatorManager.isScanning || showScanComplete {
-                LoadingOverlay(
-                    title: showScanComplete ? "Done!" : "Scanning...",
-                    isIndeterminate: true,
-                    forceComplete: showScanComplete
-                )
-            }
-
-            if simulatorManager.isCleaning || showCleanComplete {
-                LoadingOverlay(
-                    title: showCleanComplete ? "Done!" : "Cleaning...",
-                    isIndeterminate: true,
-                    forceComplete: showCleanComplete
-                )
             }
         }
         .onChange(of: simulatorManager.isScanning) { _, isScanning in
@@ -171,27 +159,7 @@ struct DashboardView: View {
     }
 }
 
-struct LoadingOverlay: View {
-    let title: String
-    let isIndeterminate: Bool
-    var forceComplete: Bool = false
 
-    var body: some View {
-        VStack(spacing: 20) {
-            ProgressView()
-                .controlSize(.large)
-                .tint(Theme.Colors.primaryText)
-            
-            Text(title)
-                .font(Theme.Fonts.body)
-                .foregroundStyle(Theme.Colors.secondaryText)
-        }
-        .padding(40)
-        .background(Color.white.opacity(0.9))
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.05), radius: 10)
-    }
-}
 
 #Preview {
     DashboardView()
