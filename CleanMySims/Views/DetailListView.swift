@@ -147,7 +147,37 @@ struct DetailListView: View {
                         .foregroundStyle(Theme.Colors.secondaryText)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if category == .builds {
+                // Grouped display for Builds tab
+                let grouped = Dictionary(grouping: items) { $0.buildGroup ?? .apps }
+                let sortedGroups = grouped.keys.sorted()
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(sortedGroups, id: \.self) { group in
+                            if let groupItems = grouped[group] {
+                                // Section header
+                                SectionHeader(
+                                    group: group,
+                                    count: groupItems.count,
+                                    totalSize: groupItems.reduce(0) { $0 + $1.size }
+                                )
+
+                                ForEach(groupItems) { item in
+                                    DetailRow(
+                                        item: item,
+                                        accentColor: Theme.Colors.color(for: category)
+                                    ) {
+                                        itemToDelete = item
+                                        showDeleteConfirm = true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
+                // Flat list for other tabs
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(items) { item in
@@ -286,6 +316,44 @@ struct DetailRow: View {
                 isHovered = hovered
             }
         }
+        .overlay(
+            Rectangle()
+                .fill(Theme.Colors.border)
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+}
+
+
+struct SectionHeader: View {
+    let group: BuildGroup
+    let count: Int
+    let totalSize: Int64
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: group.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.Colors.secondaryText)
+
+            Text(group.rawValue)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.Colors.primaryText)
+
+            Text("(\(count))")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.Colors.secondaryText)
+
+            Spacer()
+
+            Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.Colors.secondaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Theme.Colors.hoverBackground.opacity(0.5))
         .overlay(
             Rectangle()
                 .fill(Theme.Colors.border)

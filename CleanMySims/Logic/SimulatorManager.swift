@@ -151,6 +151,8 @@ class SimulatorManager: ObservableObject {
                     }
                 }
                 
+                let group: BuildGroup? = (type == .builds) ? BuildGroup.classify(folderName: itemUrl.lastPathComponent) : nil
+                
                 results.append(CleanableItem(
                     id: itemUrl.path,
                     name: finalName,
@@ -159,7 +161,8 @@ class SimulatorManager: ObservableObject {
                     type: type,
                     isDirectory: (try? itemUrl.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false,
                     details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : (type == .builds && finalName != name) ? name : nil, 
-                    appIconPath: iconPath
+                    appIconPath: iconPath,
+                    buildGroup: group
                 ))
             }
         }
@@ -198,13 +201,14 @@ class SimulatorManager: ObservableObject {
             
             results.append(CleanableItem(
                 id: folder.lastPathComponent,
-                name: name, // User facing name
+                name: name,
                 path: folder.path,
                 size: size,
                 type: .virtualDevice,
                 isDirectory: true,
                 details: details,
-                appIconPath: nil
+                appIconPath: nil,
+                buildGroup: nil
             ))
         }
         return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -274,11 +278,33 @@ class SimulatorManager: ObservableObject {
     }
     
     private func findIconFile(in appBundleUrl: URL) -> String? {
-        // Try to find AppIcon60x60@2x.png or similar
-        // Or check Info.plist for icon name
+        // Strategy 1: Check Info.plist for icon file reference (most reliable)
+        if let iconFromPlist = findIconFromPlist(in: appBundleUrl) {
+            return iconFromPlist
+        }
         
-        // Strategy 1: Look for common AppIcon names directly
-        let commonNames = ["AppIcon60x60@2x.png", "AppIcon60x60@3x.png", "AppIcon76x76@2x~ipad.png"]
+        // Strategy 2: Look for .icns files (macOS apps — in Contents/Resources/)
+        let resourcesUrl = appBundleUrl.appendingPathComponent("Contents/Resources")
+        if let contents = try? fileManager.contentsOfDirectory(at: resourcesUrl, includingPropertiesForKeys: nil) {
+            // Prefer AppIcon.icns
+            if let appIconIcns = contents.first(where: { $0.lastPathComponent == "AppIcon.icns" }) {
+                return appIconIcns.path
+            }
+            // Any .icns file
+            if let anyIcns = contents.first(where: { $0.pathExtension == "icns" }) {
+                return anyIcns.path
+            }
+        }
+        
+        // Strategy 3: iOS standard — look for common AppIcon PNGs at bundle root
+        let commonNames = [
+            "AppIcon60x60@2x.png", "AppIcon60x60@3x.png",
+            "AppIcon76x76@2x~ipad.png", "AppIcon76x76@2x.png",
+            "AppIcon83.5x83.5@2x~ipad.png",
+            "AppIcon40x40@2x.png", "AppIcon40x40@3x.png",
+            "AppIcon29x29@2x.png", "AppIcon29x29@3x.png",
+            "AppIcon20x20@2x.png", "AppIcon20x20@3x.png"
+        ]
         for name in commonNames {
             let fileUrl = appBundleUrl.appendingPathComponent(name)
             if fileManager.fileExists(atPath: fileUrl.path) {
@@ -286,15 +312,101 @@ class SimulatorManager: ObservableObject {
             }
         }
         
-        // Strategy 2: Look for any png starting with AppIcon
+        // Strategy 4: Look for ANY file matching AppIcon* pattern (covers non-standard names like AppIcon-Dev60x60@2x.png)
         if let contents = try? fileManager.contentsOfDirectory(at: appBundleUrl, includingPropertiesForKeys: nil) {
-            if let iconFile = contents.first(where: { $0.lastPathComponent.hasPrefix("AppIcon") && $0.pathExtension == "png" }) {
-                return iconFile.path
+            // Prefer largest AppIcon png (better quality)
+            let appIcons = contents.filter { 
+                $0.lastPathComponent.hasPrefix("AppIcon") && $0.pathExtension == "png" 
+            }
+            if let best = appIcons.max(by: { fileSize(at: $0) < fileSize(at: $1) }) {
+                return best.path
+            }
+            
+            // Any Icon*.png
+            if let icon = contents.first(where: {
+                $0.lastPathComponent.lowercased().hasPrefix("icon") && $0.pathExtension == "png"
+            }) {
+                return icon.path
             }
         }
         
-        // No icon found — return nil so AsyncIconView uses system icon fallback
+        // Strategy 5: Recursive search in bundle (up to 3 levels deep, for unusual structures)
+        if let enumerator = fileManager.enumerator(at: appBundleUrl, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
+            var depth = 0
+            for case let fileUrl as URL in enumerator {
+                // Limit depth
+                let relPath = fileUrl.path.replacingOccurrences(of: appBundleUrl.path, with: "")
+                depth = relPath.components(separatedBy: "/").count - 1
+                if depth > 3 { enumerator.skipDescendants(); continue }
+                
+                let name = fileUrl.lastPathComponent
+                if name.hasPrefix("AppIcon") && fileUrl.pathExtension == "png" {
+                    return fileUrl.path
+                }
+                if fileUrl.pathExtension == "icns" {
+                    return fileUrl.path
+                }
+            }
+        }
+        
         return nil
+    }
+    
+    /// Reads Info.plist to find the app icon file path
+    private func findIconFromPlist(in appBundleUrl: URL) -> String? {
+        // Try iOS-style plist (at bundle root)
+        let plistPaths = [
+            appBundleUrl.appendingPathComponent("Info.plist"),
+            appBundleUrl.appendingPathComponent("Contents/Info.plist")
+        ]
+        
+        for plistUrl in plistPaths {
+            guard let data = try? Data(contentsOf: plistUrl),
+                  let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+                continue
+            }
+            
+            // Check CFBundleIconFile (macOS) — typically "AppIcon" → look for AppIcon.icns
+            if let iconFile = plist["CFBundleIconFile"] as? String {
+                let baseName = iconFile.hasSuffix(".icns") ? iconFile : iconFile + ".icns"
+                let resourceDir = plistUrl.deletingLastPathComponent()
+                
+                // Look in Resources directory
+                let resourcesPath = resourceDir.appendingPathComponent("Resources").appendingPathComponent(baseName)
+                if fileManager.fileExists(atPath: resourcesPath.path) {
+                    return resourcesPath.path
+                }
+                // Look directly next to plist
+                let directPath = resourceDir.appendingPathComponent(baseName)
+                if fileManager.fileExists(atPath: directPath.path) {
+                    return directPath.path
+                }
+            }
+            
+            // Check CFBundleIcons > CFBundlePrimaryIcon > CFBundleIconFiles (iOS)
+            if let icons = plist["CFBundleIcons"] as? [String: Any],
+               let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
+               let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String] {
+                // iconFiles contains base names like "AppIcon60x60"
+                for baseName in iconFiles {
+                    // Try with @2x/@3x suffix
+                    for suffix in ["@3x.png", "@2x.png", ".png"] {
+                        let fullName = baseName + suffix
+                        let path = appBundleUrl.appendingPathComponent(fullName)
+                        if fileManager.fileExists(atPath: path.path) {
+                            return path.path
+                        }
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Returns the file size (for sorting icon candidates by quality)
+    private func fileSize(at url: URL) -> Int64 {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
     }
     
     // MARK: - Cleaning Logic
