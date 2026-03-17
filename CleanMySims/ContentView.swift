@@ -36,6 +36,14 @@ struct ContentView: View {
                         DetailListView(category: .builds)
                     case .deviceSupport:
                         DetailListView(category: .deviceSupport)
+                    case .androidEmulators:
+                        DetailListView(category: .androidEmulator)
+                    case .gradleCache:
+                        DetailListView(category: .gradleCache)
+                    case .androidStudioCache:
+                        DetailListView(category: .androidStudioCache)
+                    case .androidSdk:
+                        DetailListView(category: .androidSdk)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

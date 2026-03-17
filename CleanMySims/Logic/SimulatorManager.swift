@@ -32,11 +32,17 @@ class SimulatorManager: ObservableObject {
     
     private let fileManager = FileManager.default
     
-    // Paths
+    // iOS / Xcode Paths
     private let runtimesPath = "/Library/Developer/CoreSimulator/Volumes"
     private let derivedDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/DerivedData"
     private let cachePath = "/Library/Developer/CoreSimulator/Caches"
     private let deviceSupportPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/iOS DeviceSupport"
+    // Android Paths
+    private let androidAvdPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.android/avd"
+    private let gradleCachePath = FileManager.default.homeDirectoryForCurrentUser.path + "/.gradle/caches"
+    private let gradleDistsPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.gradle/wrapper/dists"
+    private let androidStudioCachePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Caches/Google"
+    private let androidSdkBasePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Android/sdk"
     
     // Structs for parsing simctl output
     struct SimctlRuntimeList: Decodable {
@@ -101,6 +107,18 @@ class SimulatorManager: ObservableObject {
             
             // 5. Scan Derived Data (Builds)
             newItems.append(contentsOf: self.scanDirectory(at: self.derivedDataPath, type: .builds))
+
+            // 6. Scan Android Emulators
+            newItems.append(contentsOf: self.scanAndroidEmulators())
+
+            // 7. Scan Gradle Caches
+            newItems.append(contentsOf: self.scanGradleCaches())
+
+            // 8. Scan Android Studio Caches
+            newItems.append(contentsOf: self.scanAndroidStudioCaches())
+
+            // 9. Scan Android SDK (platforms, build-tools, system-images)
+            newItems.append(contentsOf: self.scanAndroidSdk())
             
             let size = newItems.reduce(0) { $0 + $1.size }
             
@@ -425,6 +443,207 @@ class SimulatorManager: ObservableObject {
         (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
     }
     
+    // MARK: - Android Scanning
+
+    private func scanAndroidEmulators() -> [CleanableItem] {
+        let url = URL(fileURLWithPath: androidAvdPath)
+        var results: [CleanableItem] = []
+
+        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
+            return []
+        }
+
+        for itemUrl in contents {
+            guard itemUrl.pathExtension == "avd" else { continue }
+            let size = getDirectorySize(url: itemUrl)
+            guard size > 0 else { continue }
+
+            let name = getAvdDisplayName(url: itemUrl) ?? itemUrl.deletingPathExtension().lastPathComponent
+
+            results.append(CleanableItem(
+                id: itemUrl.path,
+                name: name,
+                path: itemUrl.path,
+                size: size,
+                type: .androidEmulator,
+                isDirectory: true,
+                details: "Android Emulator",
+                appIconPath: nil,
+                buildGroup: nil
+            ))
+        }
+
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func getAvdDisplayName(url: URL) -> String? {
+        let configUrl = url.appendingPathComponent("config.ini")
+        guard let content = try? String(contentsOf: configUrl, encoding: .utf8) else { return nil }
+
+        for line in content.components(separatedBy: "\n") {
+            if line.hasPrefix("avd.ini.displayname=") {
+                let value = line.dropFirst("avd.ini.displayname=".count).trimmingCharacters(in: .whitespaces)
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
+    }
+
+    private func scanGradleCaches() -> [CleanableItem] {
+        var results: [CleanableItem] = []
+        results.append(contentsOf: scanSubdirectories(at: gradleCachePath, type: .gradleCache, details: "Gradle Cache"))
+        results.append(contentsOf: scanSubdirectories(at: gradleDistsPath, type: .gradleCache, details: "Gradle Distribution"))
+        return results
+    }
+
+    private func scanAndroidStudioCaches() -> [CleanableItem] {
+        let url = URL(fileURLWithPath: androidStudioCachePath)
+        var results: [CleanableItem] = []
+
+        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
+            return []
+        }
+
+        for itemUrl in contents {
+            guard itemUrl.lastPathComponent.hasPrefix("AndroidStudio") else { continue }
+            let size = getDirectorySize(url: itemUrl)
+            guard size > 0 else { continue }
+
+            results.append(CleanableItem(
+                id: itemUrl.path,
+                name: itemUrl.lastPathComponent,
+                path: itemUrl.path,
+                size: size,
+                type: .androidStudioCache,
+                isDirectory: true,
+                details: "Android Studio Cache",
+                appIconPath: nil,
+                buildGroup: nil
+            ))
+        }
+
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func scanAndroidSdk() -> [CleanableItem] {
+        var results: [CleanableItem] = []
+
+        // Platforms: ~/Library/Android/sdk/platforms/android-34 → "API 34"
+        let platformsPath = androidSdkBasePath + "/platforms"
+        let platformsUrl = URL(fileURLWithPath: platformsPath)
+        if let contents = try? fileManager.contentsOfDirectory(at: platformsUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
+            for itemUrl in contents {
+                let folderName = itemUrl.lastPathComponent // e.g. "android-34"
+                let size = getDirectorySize(url: itemUrl)
+                guard size > 0 else { continue }
+
+                let displayName = formatApiLevel(folderName)
+                results.append(CleanableItem(
+                    id: itemUrl.path,
+                    name: displayName,
+                    path: itemUrl.path,
+                    size: size,
+                    type: .androidSdk,
+                    isDirectory: true,
+                    details: "SDK Platform",
+                    appIconPath: nil,
+                    buildGroup: nil
+                ))
+            }
+        }
+
+        // Build Tools: ~/Library/Android/sdk/build-tools/34.0.0
+        let buildToolsPath = androidSdkBasePath + "/build-tools"
+        let buildToolsUrl = URL(fileURLWithPath: buildToolsPath)
+        if let contents = try? fileManager.contentsOfDirectory(at: buildToolsUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
+            for itemUrl in contents {
+                let size = getDirectorySize(url: itemUrl)
+                guard size > 0 else { continue }
+
+                results.append(CleanableItem(
+                    id: itemUrl.path,
+                    name: "Build Tools \(itemUrl.lastPathComponent)",
+                    path: itemUrl.path,
+                    size: size,
+                    type: .androidSdk,
+                    isDirectory: true,
+                    details: "Build Tools",
+                    appIconPath: nil,
+                    buildGroup: nil
+                ))
+            }
+        }
+
+        // System Images: ~/Library/Android/sdk/system-images/android-34
+        let systemImagesPath = androidSdkBasePath + "/system-images"
+        let systemImagesUrl = URL(fileURLWithPath: systemImagesPath)
+        if let apiLevels = try? fileManager.contentsOfDirectory(at: systemImagesUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
+            for apiUrl in apiLevels {
+                // Each api level may have multiple variants (google_apis, google_apis_playstore, default...)
+                guard let variants = try? fileManager.contentsOfDirectory(at: apiUrl, includingPropertiesForKeys: [.isDirectoryKey]) else { continue }
+                for variantUrl in variants {
+                    let size = getDirectorySize(url: variantUrl)
+                    guard size > 0 else { continue }
+
+                    let apiName = formatApiLevel(apiUrl.lastPathComponent)
+                    let variantName = variantUrl.lastPathComponent
+                        .replacingOccurrences(of: "_", with: " ")
+                        .capitalized
+                    results.append(CleanableItem(
+                        id: variantUrl.path,
+                        name: "\(apiName) · \(variantName)",
+                        path: variantUrl.path,
+                        size: size,
+                        type: .androidSdk,
+                        isDirectory: true,
+                        details: "System Image",
+                        appIconPath: nil,
+                        buildGroup: nil
+                    ))
+                }
+            }
+        }
+
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Converts "android-34" → "API 34", leaves other names unchanged
+    private func formatApiLevel(_ folderName: String) -> String {
+        if folderName.hasPrefix("android-"),
+           let level = Int(folderName.dropFirst("android-".count)) {
+            return "API \(level)"
+        }
+        return folderName
+    }
+
+    private func scanSubdirectories(at path: String, type: CleanableItemType, details: String?) -> [CleanableItem] {
+        let url = URL(fileURLWithPath: path)
+        var results: [CleanableItem] = []
+
+        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
+            return []
+        }
+
+        for itemUrl in contents {
+            let size = getDirectorySize(url: itemUrl)
+            guard size > 0 else { continue }
+
+            results.append(CleanableItem(
+                id: itemUrl.path,
+                name: itemUrl.lastPathComponent,
+                path: itemUrl.path,
+                size: size,
+                type: type,
+                isDirectory: true,
+                details: details,
+                appIconPath: nil,
+                buildGroup: nil
+            ))
+        }
+
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     // MARK: - Cleaning Logic
     
     func delete(item: CleanableItem) {

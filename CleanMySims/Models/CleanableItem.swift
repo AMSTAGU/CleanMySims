@@ -6,11 +6,17 @@
 import Foundation
 
 enum CleanableItemType: String, CaseIterable {
+    // iOS / Xcode
     case builds = "Builds"
     case cache = "Caches"
     case deviceSupport = "Device Support"
     case virtualDevice = "Simulators"
     case runtimes = "Runtimes"
+    // Android
+    case androidEmulator = "Android Emulators"
+    case gradleCache = "Gradle"
+    case androidStudioCache = "Android Studio"
+    case androidSdk = "Android SDK"
 
     var iconName: String {
         switch self {
@@ -19,6 +25,10 @@ enum CleanableItemType: String, CaseIterable {
         case .virtualDevice: return "iphone"
         case .runtimes: return "gearshape.2"
         case .builds: return "hammer.circle"
+        case .androidEmulator: return "candybarphone"
+        case .gradleCache: return "shippingbox"
+        case .androidStudioCache: return "wrench.and.screwdriver"
+        case .androidSdk: return "cpu"
         }
     }
 }

@@ -10,7 +10,7 @@ struct DashboardView: View {
     @State private var showScanComplete = false
     @State private var showCleanComplete = false
 
-    private let categories: [(type: CleanableItemType, title: String, help: String)] = [
+    private let iosCategories: [(type: CleanableItemType, title: String, help: String)] = [
         (.cache, "Caches", "Temporary simulator data: logs, compilation caches, downloaded data"),
         (.virtualDevice, "Simulators", "Virtual iOS devices used by Xcode to test your apps"),
         (.runtimes, "Runtimes", "iOS versions installed to run the simulators"),
@@ -18,11 +18,22 @@ struct DashboardView: View {
         (.deviceSupport, "Device Support", "Support files to connect physical iPhone/iPad to Xcode")
     ]
 
+    private let androidCategories: [(type: CleanableItemType, title: String, help: String)] = [
+        (.androidEmulator, "Emulators", "Android virtual devices (.avd folders)"),
+        (.gradleCache, "Gradle", "Gradle build caches and downloaded wrapper distributions"),
+        (.androidStudioCache, "Android Studio", "Android Studio IDE caches and indexes"),
+        (.androidSdk, "SDK", "SDK platforms (API levels), build tools and system images")
+    ]
+
+    private var allCategories: [(type: CleanableItemType, title: String, help: String)] {
+        iosCategories + androidCategories
+    }
+
     private var pieSlices: [PieSlice] {
-        categories.map { category in
+        allCategories.map { category in
             let stats = simulatorManager.categoryStats[category.type]
             let size = stats?.size ?? 0
-            
+
             return PieSlice(
                 value: Double(size),
                 color: Theme.Colors.color(for: category.type),
@@ -34,7 +45,7 @@ struct DashboardView: View {
 
     /// Placeholder slices for when data hasn't loaded yet
     private var placeholderSlices: [PieSlice] {
-        categories.map { category in
+        allCategories.map { category in
             PieSlice(
                 value: 1.0,
                 color: Theme.Colors.color(for: category.type),
@@ -84,32 +95,26 @@ struct DashboardView: View {
                     .padding(.bottom, 20)
                     .animation(.easeInOut(duration: 0.4), value: hasData)
 
-                    // Legend — always visible
-                    HStack(spacing: 20) {
-                        ForEach(categories, id: \.type) { category in
-                            let stats = simulatorManager.categoryStats[category.type]
-                            let size = stats?.size ?? 0
-                            
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Theme.Colors.color(for: category.type))
-                                    .frame(width: 8, height: 8)
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Text(category.title)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundStyle(Theme.Colors.primaryText)
-                                    Text(hasData ? ByteCountFormatter.string(fromByteCount: size, countStyle: .file) : "—")
-                                        .font(.system(size: 9, weight: .regular))
-                                        .foregroundStyle(Theme.Colors.secondaryText)
-                                }
+                    // Legend — 2 rows (iOS + Android)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 16) {
+                            ForEach(iosCategories, id: \.type) { category in
+                                let size = simulatorManager.categoryStats[category.type]?.size ?? 0
+                                LegendItem(category: category, size: size, hasData: hasData)
+                            }
+                        }
+                        HStack(spacing: 16) {
+                            ForEach(androidCategories, id: \.type) { category in
+                                let size = simulatorManager.categoryStats[category.type]?.size ?? 0
+                                LegendItem(category: category, size: size, hasData: hasData)
                             }
                         }
                     }
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 20)
 
-                    // Section divider
+                    // iOS Section
                     HStack {
-                        Text("Categories")
+                        Text("iOS")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Theme.Colors.secondaryText)
                             .textCase(.uppercase)
@@ -119,19 +124,47 @@ struct DashboardView: View {
                             .frame(height: 1)
                     }
                     .padding(.horizontal, 32)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 12)
 
-                    // Cards Grid
                     LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16)
-                        ],
+                        columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
                         spacing: 16
                     ) {
-                        ForEach(categories, id: \.type) { category in
+                        ForEach(iosCategories, id: \.type) { category in
                             let stats = simulatorManager.categoryStats[category.type]
-                            
+                            MinimalCard(
+                                title: category.title,
+                                type: category.type,
+                                size: stats?.size ?? 0,
+                                itemCount: stats?.count ?? 0,
+                                helpText: category.help,
+                                overrideSizeString: hasData ? nil : "—"
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 16)
+
+                    // Android Section
+                    HStack {
+                        Text("Android")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+                        Rectangle()
+                            .fill(Theme.Colors.border)
+                            .frame(height: 1)
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 12)
+
+                    LazyVGrid(
+                        columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
+                        spacing: 16
+                    ) {
+                        ForEach(androidCategories, id: \.type) { category in
+                            let stats = simulatorManager.categoryStats[category.type]
                             MinimalCard(
                                 title: category.title,
                                 type: category.type,
@@ -205,8 +238,30 @@ struct DashboardView: View {
 }
 
 
+private struct LegendItem: View {
+    let category: (type: CleanableItemType, title: String, help: String)
+    let size: Int64
+    let hasData: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Theme.Colors.color(for: category.type))
+                .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(category.title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Theme.Colors.primaryText)
+                Text(hasData ? ByteCountFormatter.string(fromByteCount: size, countStyle: .file) : "—")
+                    .font(.system(size: 9, weight: .regular))
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+        }
+    }
+}
+
 #Preview {
     DashboardView()
         .environmentObject(SimulatorManager())
-        .frame(width: 600, height: 500)
+        .frame(width: 600, height: 600)
 }
