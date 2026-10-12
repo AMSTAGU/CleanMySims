@@ -44,6 +44,8 @@ final class SimulatorManager {
     private(set) var isCleaning = false
     private(set) var cleaningDone = 0
     private(set) var cleaningTotal = 0
+    /// Items the last clean couldn't remove, with the reason. They stay in the lists.
+    var cleaningFailures: [(item: CleanableItem, reason: String)] = []
 
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var lastTreemapRefresh = Date.distantPast
@@ -170,21 +172,34 @@ final class SimulatorManager {
     }
 
     /// Removes items one by one off the main thread, updating the lists as it goes.
+    /// Items that fail stay listed and are reported in `cleaningFailures`.
     func clean(_ itemsToClean: [CleanableItem]) {
         guard !itemsToClean.isEmpty, !isCleaning else { return }
         isCleaning = true
         cleaningDone = 0
         cleaningTotal = itemsToClean.count
+        cleaningFailures = []
 
         Task {
+            var failures: [(item: CleanableItem, reason: String)] = []
             for item in itemsToClean {
-                await Task.detached(priority: .userInitiated) {
-                    DiskScanner.remove(item)
+                let failure = await Task.detached(priority: .userInitiated) { () -> String? in
+                    do {
+                        try DiskScanner.remove(item)
+                        return nil
+                    } catch {
+                        return error.localizedDescription
+                    }
                 }.value
-                forget(item)
+                if let failure {
+                    failures.append((item, failure))
+                } else {
+                    forget(item)
+                }
                 cleaningDone += 1
             }
             isCleaning = false
+            cleaningFailures = failures
             refreshFreeSpace()
         }
     }

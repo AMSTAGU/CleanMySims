@@ -32,7 +32,7 @@ struct OverviewView: View {
                 manager.clean(manager.safeItems)
             }
         } message: {
-            Text("\(manager.safeItems.count) items, \(manager.safeSize.formatted(.byteCount(style: .file))). Simulators are deleted with simctl, everything else goes to the Trash.")
+            Text("\(manager.safeItems.count) items, \(manager.safeSize.formatted(.byteCount(style: .file))). Deleted permanently (simulators and system caches through simctl). Xcode and Gradle recreate them when needed.")
         }
     }
 

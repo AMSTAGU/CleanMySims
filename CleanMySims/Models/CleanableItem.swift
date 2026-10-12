@@ -86,6 +86,19 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
         }
     }
 
+    /// How items of this category are removed, as told in confirmations.
+    var removalNote: String {
+        switch self {
+        case .virtualDevice, .testClones, .previews: return "Deleted with simctl."
+        case .runtimes: return "Removed with simctl runtime delete."
+        case .cache: return "Deleted permanently (system caches through simctl). Recreated when needed."
+        case .builds, .gradleCache, .androidStudioCache: return "Deleted permanently. Recreated when needed."
+        case .androidEmulator: return "Deleted with avdmanager."
+        case .androidSdk: return "Uninstalled with sdkmanager."
+        case .deviceSupport, .archives: return "Moved to the Trash."
+        }
+    }
+
     static func types(for platform: Platform) -> [CleanableItemType] {
         allCases.filter { $0.platform == platform }
     }

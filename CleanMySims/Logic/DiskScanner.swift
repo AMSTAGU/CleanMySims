@@ -23,6 +23,9 @@ nonisolated struct DiskScanner: Sendable {
     private static let developer = home + "/Library/Developer"
     private static let xcode = developer + "/Xcode"
     private static let androidSdkPath = home + "/Library/Android/sdk"
+    private static let avdPath = home + "/.android/avd"
+    private static let dyldCachesPath = "/Library/Developer/CoreSimulator/Caches/dyld"
+    private static let runtimePrefix = "com.apple.CoreSimulator.SimRuntime."
 
     /// How many files to measure between two progress events.
     private static let reportEvery = 2_000
@@ -31,7 +34,7 @@ nonisolated struct DiskScanner: Sendable {
         let items: [CleanableItem]
         switch type {
         case .cache:
-            items = subdirectories(of: "/Library/Developer/CoreSimulator/Caches", type: type, details: "System simulator cache")
+            items = dyldCaches()
                 + subdirectories(of: Self.developer + "/CoreSimulator/Caches", type: type, details: "Simulator cache")
                 + single(Self.home + "/Library/Caches/com.apple.dt.Xcode", name: "Xcode cache", type: type)
         case .deviceSupport:
@@ -179,6 +182,33 @@ nonisolated struct DiskScanner: Sendable {
         return platform + " " + parts.joined(separator: ".")
     }
 
+    /// Simulator system caches: Caches/dyld/<host build>/<runtime identifier>.<runtime build>.
+    /// The folders belong to root, so they are listed per runtime and removed with simctl.
+    private func dyldCaches() -> [CleanableItem] {
+        var results: [CleanableItem] = []
+        for host in contents(of: Self.dyldCachesPath) {
+            for folder in contents(of: host.path) where folder.lastPathComponent.hasPrefix(Self.runtimePrefix) {
+                guard !Task.isCancelled else { return results }
+                guard let runtime = Self.dyldCacheRuntime(folder) else { continue }
+                let size = diskSize(of: folder, type: .cache)
+                guard size > 0 else { continue }
+                results.append(CleanableItem(
+                    id: folder.path, name: "\(Self.runtimeName(fromIdentifier: runtime.identifier)) system cache",
+                    path: folder.path, size: size, type: .cache, details: "dyld shared cache · \(runtime.build)"
+                ))
+            }
+        }
+        return results
+    }
+
+    /// "com.apple.CoreSimulator.SimRuntime.iOS-18-6.22G86" → (identifier without the build, build)
+    private static func dyldCacheRuntime(_ folder: URL) -> (identifier: String, build: String)? {
+        var parts = folder.lastPathComponent.components(separatedBy: ".")
+        guard parts.count > 1 else { return nil }
+        let build = parts.removeLast()
+        return (parts.joined(separator: "."), build)
+    }
+
     /// Installed simulator runtimes, as simctl sees them. Their disk images live in system
     /// folders, so simctl's own size is both faster and more accurate than walking the mounted volume.
     private func runtimes() -> [CleanableItem] {
@@ -280,14 +310,25 @@ nonisolated struct DiskScanner: Sendable {
     // MARK: - Android
 
     private func androidEmulators() -> [CleanableItem] {
-        contents(of: Self.home + "/.android/avd").compactMap { avd in
-            guard avd.pathExtension == "avd", !Task.isCancelled else { return nil }
-            let size = diskSize(of: avd, type: .androidEmulator)
-            guard size > 0 else { return nil }
-            return CleanableItem(id: avd.path,
-                                 name: avdDisplayName(avd) ?? avd.deletingPathExtension().lastPathComponent,
-                                 path: avd.path, size: size, type: .androidEmulator, details: "Android Emulator")
+        var results: [CleanableItem] = []
+        for entry in contents(of: Self.avdPath) {
+            guard !Task.isCancelled else { break }
+            let avdName = entry.deletingPathExtension().lastPathComponent
+            if entry.pathExtension == "avd" {
+                let size = diskSize(of: entry, type: .androidEmulator)
+                guard size > 0 else { continue }
+                results.append(CleanableItem(id: entry.path, name: avdDisplayName(entry) ?? avdName,
+                                             path: entry.path, size: size, type: .androidEmulator,
+                                             details: "Android Emulator"))
+            } else if entry.pathExtension == "ini",
+                      !FileManager.default.fileExists(atPath: Self.avdPath + "/\(avdName).avd") {
+                // Leftover of an emulator whose folder was deleted by hand: Android Studio lists it as broken
+                results.append(CleanableItem(id: entry.path, name: avdName, path: entry.path,
+                                             size: diskSize(of: entry, type: .androidEmulator),
+                                             type: .androidEmulator, details: "Broken: its .avd folder is missing"))
+            }
         }
+        return results
     }
 
     private func avdDisplayName(_ avd: URL) -> String? {
@@ -393,32 +434,60 @@ nonisolated struct DiskScanner: Sendable {
 
     // MARK: - Removal
 
-    /// Removes an item from disk. Simulators and runtimes go through simctl so CoreSimulator
-    /// stays consistent; everything else is moved to the trash. Blocking.
-    static func remove(_ item: CleanableItem) {
+    struct RemovalError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+
+        /// Builds an error from a failed command, keeping its own message when it printed one.
+        static func command(_ name: String, _ result: (output: String, status: Int32)) -> RemovalError {
+            let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return RemovalError(message: output.isEmpty ? "\(name) failed (exit code \(result.status))." : output)
+        }
+    }
+
+    /// Removes an item with the tool that owns it (simctl, avdmanager, sdkmanager). Plain folders are
+    /// deleted permanently when the tools recreate them, moved to the Trash otherwise. Blocking.
+    /// Throws when nothing was removed, so the item stays listed.
+    static func remove(_ item: CleanableItem) throws {
         switch item.type {
         case .virtualDevice, .testClones, .previews:
-            // Each device belongs to a device set (its parent folder)
-            let setPath = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
-            Shell.simctl("--set", setPath, "delete", item.id)
+            try removeSimulator(item)
         case .runtimes:
-            // Runtime volumes are mounted disk images owned by root: only simctl can remove them.
-            // Items from simctl carry the runtime identifier as id; older ones only their mount path.
-            if let identifier = item.id.hasPrefix("/") ? runtimeIdentifier(mountPath: item.path) : item.id {
-                Shell.simctl("runtime", "delete", identifier)
-                return
+            try removeRuntime(item)
+        case .cache:
+            if item.path.hasPrefix(dyldCachesPath + "/") {
+                try removeDyldCache(item)
+            } else {
+                try deleteFiles(at: item.path, permanently: true)
             }
-        default:
-            break
+        case .builds, .gradleCache, .androidStudioCache:
+            try deleteFiles(at: item.path, permanently: true)
+        case .deviceSupport, .archives:
+            try deleteFiles(at: item.path, permanently: false)
+        case .androidEmulator:
+            try removeEmulator(item)
+        case .androidSdk:
+            try removeSdkPackage(item)
         }
+    }
 
-        // Move to trash (also a fallback if simctl left the folder behind)
-        guard FileManager.default.fileExists(atPath: item.path) else { return }
-        do {
-            try FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
-        } catch {
-            print("Error trashing \(item.path): \(error)")
+    /// Shuts the device down if it is running, then deletes it from its device set (its parent folder).
+    /// Never touches the folder by hand: that would leave CoreSimulator with a dangling device.
+    private static func removeSimulator(_ item: CleanableItem) throws {
+        let setPath = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
+        Shell.simctl("--set", setPath, "shutdown", item.id) // Fails harmlessly when already shut down
+        let result = Shell.simctl("--set", setPath, "delete", item.id)
+        guard result.status == 0 else { throw RemovalError.command("simctl delete", result) }
+    }
+
+    /// Runtime volumes are mounted disk images owned by root: only simctl can remove them.
+    /// Items from simctl carry the runtime identifier as id; older ones only their mount path.
+    private static func removeRuntime(_ item: CleanableItem) throws {
+        guard let identifier = item.id.hasPrefix("/") ? runtimeIdentifier(mountPath: item.path) : item.id else {
+            throw RemovalError(message: "simctl doesn't list this runtime anymore. Rescan and try again.")
         }
+        let result = Shell.simctl("runtime", "delete", identifier)
+        guard result.status == 0 else { throw RemovalError.command("simctl runtime delete", result) }
     }
 
     private static func runtimeIdentifier(mountPath: String) -> String? {
@@ -429,5 +498,74 @@ nonisolated struct DiskScanner: Sendable {
             return nil
         }
         return images.values.first { ($0["mountPath"] as? String) == mountPath }?["identifier"] as? String
+    }
+
+    /// System dyld caches belong to root: simctl removes them for one runtime.
+    private static func removeDyldCache(_ item: CleanableItem) throws {
+        guard let runtime = dyldCacheRuntime(URL(fileURLWithPath: item.path)) else {
+            throw RemovalError(message: "Unknown cache folder.")
+        }
+        let result = Shell.simctl("runtime", "dyld_shared_cache", "remove", runtime.identifier)
+        guard result.status == 0, !result.output.contains("Invalid runtime") else {
+            throw RemovalError.command("simctl runtime dyld_shared_cache remove", result)
+        }
+    }
+
+    /// Deletes the AVD with avdmanager, then clears what is left of it (its .avd folder and .ini file),
+    /// which is all avdmanager does when it works.
+    private static func removeEmulator(_ item: CleanableItem) throws {
+        let name = URL(fileURLWithPath: item.path).deletingPathExtension().lastPathComponent
+        if let avdmanager = androidTool("avdmanager") {
+            Shell.run(avdmanager, arguments: ["delete", "avd", "-n", name], environment: androidToolEnvironment)
+        }
+        for leftover in [avdPath + "/\(name).avd", avdPath + "/\(name).ini"] where FileManager.default.fileExists(atPath: leftover) {
+            try deleteFiles(at: leftover, permanently: false)
+        }
+    }
+
+    /// Uninstalls with sdkmanager so the SDK Manager stays in sync; moves the folder to the Trash
+    /// when sdkmanager isn't installed or can't run.
+    private static func removeSdkPackage(_ item: CleanableItem) throws {
+        let packages = sdkPackages(at: item.path)
+        if !packages.isEmpty, let sdkmanager = androidTool("sdkmanager") {
+            let result = Shell.run(sdkmanager, arguments: ["--sdk_root=\(androidSdkPath)", "--uninstall"] + packages,
+                                   environment: androidToolEnvironment)
+            if result.status == 0 && !FileManager.default.fileExists(atPath: item.path) { return }
+        }
+        try deleteFiles(at: item.path, permanently: false)
+    }
+
+    /// sdkmanager package paths for a folder: platforms/android-34 → "platforms;android-34",
+    /// system-images/android-34/google_apis → one package per ABI folder inside.
+    private static func sdkPackages(at path: String) -> [String] {
+        guard path.hasPrefix(androidSdkPath + "/") else { return [] }
+        let components = path.dropFirst(androidSdkPath.count + 1).split(separator: "/").map(String.init)
+        guard components.first == "system-images" else {
+            return [components.joined(separator: ";")]
+        }
+        let abis = (try? FileManager.default.contentsOfDirectory(atPath: path))?.filter { !$0.hasPrefix(".") } ?? []
+        return abis.map { (components + [$0]).joined(separator: ";") }
+    }
+
+    private static func androidTool(_ name: String) -> String? {
+        let path = androidSdkPath + "/cmdline-tools/latest/bin/\(name)"
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
+    /// Apps launched from Finder have no JAVA_HOME: use the JDK bundled with Android Studio.
+    private static var androidToolEnvironment: [String: String] {
+        if ProcessInfo.processInfo.environment["JAVA_HOME"] != nil { return [:] }
+        let studioJDK = "/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+        return FileManager.default.fileExists(atPath: studioJDK) ? ["JAVA_HOME": studioJDK] : [:]
+    }
+
+    private static func deleteFiles(at path: String, permanently: Bool) throws {
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let url = URL(fileURLWithPath: path)
+        if permanently {
+            try FileManager.default.removeItem(at: url)
+        } else {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        }
     }
 }

@@ -38,6 +38,17 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: manager.isCleaning)
+        .alert(
+            "^[\(manager.cleaningFailures.count) item](inflect: true) couldn't be removed",
+            isPresented: Binding(
+                get: { !manager.cleaningFailures.isEmpty },
+                set: { if !$0 { manager.cleaningFailures = [] } }
+            )
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(failureSummary)
+        }
         .ignoresSafeArea()
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
         .containerBackground(.thickMaterial, for: .window)
@@ -46,6 +57,14 @@ struct ContentView: View {
                 manager.scan()
             }
         }
+    }
+}
+
+extension ContentView {
+    private var failureSummary: String {
+        let lines = manager.cleaningFailures.prefix(5).map { "\($0.item.name): \($0.reason)" }
+        let more = manager.cleaningFailures.count - lines.count
+        return (lines + (more > 0 ? ["and \(more) more"] : [])).joined(separator: "\n")
     }
 }
 

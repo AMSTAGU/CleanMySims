@@ -10,12 +10,17 @@ import Foundation
 nonisolated enum Shell {
     /// Runs an executable with explicit arguments (no shell, so paths with spaces are safe). Blocking.
     @discardableResult
-    static func run(_ executable: String, arguments: [String]) -> (output: String, status: Int32) {
+    static func run(
+        _ executable: String, arguments: [String], environment: [String: String] = [:]
+    ) -> (output: String, status: Int32) {
         let task = Process()
         let pipe = Pipe()
 
         task.executableURL = URL(fileURLWithPath: executable)
         task.arguments = arguments
+        if !environment.isEmpty {
+            task.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
         task.standardOutput = pipe
         task.standardError = pipe
         task.standardInput = nil

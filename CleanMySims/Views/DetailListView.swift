@@ -77,20 +77,12 @@ struct DetailListView: View {
         ) { item in
             Button("Delete", role: .destructive) { manager.delete(item) }
         } message: { item in
-            Text("\(item.sizeString) will be freed. \(removalNote)")
+            Text("\(item.sizeString). \(category.removalNote)")
         }
         .alert("Clean all \(category.title.lowercased())?", isPresented: $confirmCleanAll) {
             Button("Clean", role: .destructive) { manager.clean(items) }
         } message: {
-            Text("^[\(items.count) item](inflect: true), \(total.formatted(.byteCount(style: .file))). \(removalNote)")
-        }
-    }
-
-    private var removalNote: String {
-        switch category {
-        case .virtualDevice, .testClones, .previews: return "Deleted with simctl."
-        case .runtimes: return "Removed with simctl runtime delete."
-        default: return "Moved to the Trash."
+            Text("^[\(items.count) item](inflect: true), \(total.formatted(.byteCount(style: .file))). \(category.removalNote)")
         }
     }
 
