@@ -22,7 +22,7 @@ struct SidebarView: View {
             SidebarRow(isSelected: selection == .overview, help: nil) {
                 selection = .overview
             } icon: {
-                GradientIcon(systemName: "square.grid.2x2.fill", color: Theme.Colors.primaryText, glyphScale: 0.42)
+                GradientIcon(systemName: "square.grid.2x2.fill", color: Theme.Colors.primaryText)
             } label: {
                 Text("Overview").fontWeight(.medium)
             } trailing: {
