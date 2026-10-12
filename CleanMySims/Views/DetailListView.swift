@@ -51,15 +51,27 @@ struct DetailListView: View {
 
     var body: some View {
         let items = items
-        let total = items.reduce(0) { $0 + $1.size }
+        let stats = manager.categoryStats[category]
+        let total = stats?.reclaimable ?? 0
 
         VStack(alignment: .leading, spacing: 14) {
-            header(items: items, total: total)
+            header(items: items, total: total, isEstimate: stats?.isShared ?? false)
 
             Text(category.helpText)
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.Colors.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let stats, stats.isShared {
+                Label {
+                    Text("These simulators are APFS clones that share most of their data: their sizes add up to \(stats.size.formatted(.byteCount(style: .file))), but deleting them all frees about \(stats.reclaimable.formatted(.byteCount(style: .file))).")
+                } icon: {
+                    Image(systemName: "square.on.square.dashed")
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
 
             if items.isEmpty {
                 emptyState
@@ -77,18 +89,22 @@ struct DetailListView: View {
         ) { item in
             Button("Delete", role: .destructive) { manager.delete(item) }
         } message: { item in
-            Text("\(item.sizeString). \(category.removalNote)")
+            if item.isMostlyShared {
+                Text("Frees about \(item.ownSize.formatted(.byteCount(style: .file))): most of its \(item.sizeString) is shared with other clones. \(category.removalNote)")
+            } else {
+                Text("\(item.sizeString). \(category.removalNote)")
+            }
         }
         .alert("Clean all \(category.title.lowercased())?", isPresented: $confirmCleanAll) {
             Button("Clean", role: .destructive) { manager.clean(items) }
         } message: {
-            Text("^[\(items.count) item](inflect: true), \(total.formatted(.byteCount(style: .file))). \(category.removalNote)")
+            Text("^[\(items.count) item](inflect: true), frees \(stats?.isShared == true ? "about " : "")\(total.formatted(.byteCount(style: .file))). \(category.removalNote)")
         }
     }
 
     // MARK: - Header
 
-    private func header(items: [CleanableItem], total: Int64) -> some View {
+    private func header(items: [CleanableItem], total: Int64, isEstimate: Bool) -> some View {
         HStack(spacing: 12) {
             CategoryIcon(type: category, size: 32)
             VStack(alignment: .leading, spacing: 2) {
@@ -107,7 +123,8 @@ struct DetailListView: View {
             IconPillButton(systemName: sortOrder.icon, help: sortOrder.label) {
                 withAnimation(.easeInOut(duration: 0.2)) { sortOrder = sortOrder.next }
             }
-            SizePill(size: total)
+            SizePill(size: total, isEstimate: isEstimate)
+                .help(isEstimate ? "Estimated space freed by deleting all of them" : "Space freed by deleting all of them")
             CleanButton {
                 confirmCleanAll = true
             }
@@ -192,6 +209,16 @@ private struct DetailRow: View {
             }
 
             Spacer(minLength: 8)
+
+            if item.isMostlyShared {
+                Text("Shared")
+                    .font(.system(size: 10, weight: .medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .foregroundStyle(Theme.Colors.secondaryText)
+                    .background(Theme.Colors.control, in: Capsule())
+                    .help("\((item.size - item.ownSize).formatted(.byteCount(style: .file))) shared with other clones. Deleting only this one frees about \(item.ownSize.formatted(.byteCount(style: .file))).")
+            }
 
             Text(item.sizeString)
                 .font(Theme.Fonts.size)

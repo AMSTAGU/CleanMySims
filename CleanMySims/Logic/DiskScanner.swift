@@ -73,28 +73,40 @@ nonisolated struct DiskScanner: Sendable {
     // MARK: - Measuring
 
     /// Space the item really takes on disk (allocated size, so sparse and compressed files count right).
-    /// Reports progress every few thousand files and stops early when the scan is cancelled.
     private func diskSize(of url: URL, type: CleanableItemType) -> Int64 {
+        measure(url, type: type, exclusive: false).allocated
+    }
+
+    /// Allocated size and, with `exclusive`, the part not shared with APFS clones: what deleting
+    /// this item alone frees. Simulators are cloned (parallel testing, previews), so their files
+    /// share most of their blocks and the allocated sizes add up to far more than the disk holds.
+    /// Reports progress (exclusive bytes when measured) every few thousand files and stops early
+    /// when the scan is cancelled.
+    private func measure(_ url: URL, type: CleanableItemType, exclusive: Bool) -> (allocated: Int64, exclusive: Int64) {
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isDirectoryKey]
         let values = try? url.resourceValues(forKeys: Set(keys))
         guard values?.isDirectory == true else {
             let size = Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
-            report(.measured(type, bytes: size, path: url.path))
-            return size
+            let own = exclusive ? (Self.privateSize(url.path) ?? size) : size
+            report(.measured(type, bytes: own, path: url.path))
+            return (size, own)
         }
 
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
-        ) else { return 0 }
+        ) else { return (0, 0) }
 
-        var total: Int64 = 0
+        var allocated: Int64 = 0
+        var own: Int64 = 0
         var unreported: Int64 = 0
         var count = 0
         for case let fileURL as URL in enumerator {
             if let v = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]),
                let size = v.totalFileAllocatedSize ?? v.fileAllocatedSize {
-                total += Int64(size)
-                unreported += Int64(size)
+                let fileOwn = exclusive ? (Self.privateSize(fileURL.path) ?? Int64(size)) : Int64(size)
+                allocated += Int64(size)
+                own += fileOwn
+                unreported += fileOwn
             }
             count += 1
             if count % Self.reportEvery == 0 {
@@ -104,7 +116,30 @@ nonisolated struct DiskScanner: Sendable {
             }
         }
         report(.measured(type, bytes: unreported, path: url.path))
-        return total
+        return (allocated, own)
+    }
+
+    /// Bytes of a file not shared with any APFS clone (ATTR_CMNEXT_PRIVATESIZE), nil if unsupported.
+    private static func privateSize(_ path: String) -> Int64? {
+        var request = attrlist(
+            bitmapcount: u_short(ATTR_BIT_MAP_COUNT), reserved: 0,
+            commonattr: attrgroup_t(truncatingIfNeeded: ATTR_CMN_RETURNED_ATTRS),
+            volattr: 0, dirattr: 0, fileattr: 0,
+            forkattr: attrgroup_t(truncatingIfNeeded: ATTR_CMNEXT_PRIVATESIZE)
+        )
+        struct Reply {
+            var length: UInt32 = 0
+            var returned = attribute_set_t()
+            var privateSize: off_t = 0
+        }
+        var reply = Reply()
+        let options = UInt32(truncatingIfNeeded: FSOPT_ATTR_CMN_EXTENDED) | UInt32(truncatingIfNeeded: FSOPT_NOFOLLOW)
+        let status = withUnsafeMutableBytes(of: &reply) {
+            getattrlist(path, &request, $0.baseAddress, $0.count, options)
+        }
+        guard status == 0,
+              reply.returned.forkattr & attrgroup_t(truncatingIfNeeded: ATTR_CMNEXT_PRIVATESIZE) != 0 else { return nil }
+        return Int64(reply.privateSize)
     }
 
     private func contents(of path: String) -> [URL] {
@@ -151,9 +186,9 @@ nonisolated struct DiskScanner: Sendable {
             // Skip device_set.plist and other loose files
             guard isDirectory(folder), !Task.isCancelled else { return nil }
             let info = deviceInfo(at: folder)
-            let size = diskSize(of: folder, type: type)
+            let size = measure(folder, type: type, exclusive: true)
             // Leftover empty folders aren't worth listing
-            guard size > 0 || info != nil else { return nil }
+            guard size.allocated > 0 || info != nil else { return nil }
 
             let udid = folder.lastPathComponent
             var details = info?.runtime
@@ -161,16 +196,20 @@ nonisolated struct DiskScanner: Sendable {
                 // Xcode gives every clone the same name: add the UDID prefix to tell them apart
                 details = [details, String(udid.prefix(8))].compactMap { $0 }.joined(separator: " · ")
             }
-            return CleanableItem(id: udid, name: info?.name ?? "Device \(udid.prefix(8))",
-                                 path: folder.path, size: size, type: type, details: details)
+            var item = CleanableItem(id: udid, name: info?.name ?? "Device \(udid.prefix(8))",
+                                     path: folder.path, size: size.allocated, type: type, details: details)
+            item.exclusiveSize = size.exclusive
+            // Clones of the same device type and runtime share their blocks
+            item.cloneGroup = info.map { "\($0.deviceType)|\($0.runtime)" }
+            return item
         }
     }
 
-    private func deviceInfo(at folder: URL) -> (name: String, runtime: String)? {
+    private func deviceInfo(at folder: URL) -> (name: String, runtime: String, deviceType: String)? {
         guard let plist = Self.plist(at: folder.appendingPathComponent("device.plist")),
               let name = plist["name"] as? String,
               let runtimeID = plist["runtime"] as? String else { return nil }
-        return (name, Self.runtimeName(fromIdentifier: runtimeID))
+        return (name, Self.runtimeName(fromIdentifier: runtimeID), plist["deviceType"] as? String ?? "")
     }
 
     /// com.apple.CoreSimulator.SimRuntime.iOS-26-2 → "iOS 26.2"
@@ -448,7 +487,9 @@ nonisolated struct DiskScanner: Sendable {
     /// Removes an item with the tool that owns it (simctl, avdmanager, sdkmanager). Plain folders are
     /// deleted permanently when the tools recreate them, moved to the Trash otherwise. Blocking.
     /// Throws when nothing was removed, so the item stays listed.
-    static func remove(_ item: CleanableItem) throws {
+    /// Returns true when the item went to the Trash, where it still takes space.
+    @discardableResult
+    static func remove(_ item: CleanableItem) throws -> Bool {
         switch item.type {
         case .virtualDevice, .testClones, .previews:
             try removeSimulator(item)
@@ -464,11 +505,13 @@ nonisolated struct DiskScanner: Sendable {
             try deleteFiles(at: item.path, permanently: true)
         case .deviceSupport, .archives:
             try deleteFiles(at: item.path, permanently: false)
+            return true
         case .androidEmulator:
             try removeEmulator(item)
         case .androidSdk:
-            try removeSdkPackage(item)
+            return try removeSdkPackage(item)
         }
+        return false
     }
 
     /// Shuts the device down if it is running, then deletes it from its device set (its parent folder).
@@ -525,14 +568,15 @@ nonisolated struct DiskScanner: Sendable {
 
     /// Uninstalls with sdkmanager so the SDK Manager stays in sync; moves the folder to the Trash
     /// when sdkmanager isn't installed or can't run.
-    private static func removeSdkPackage(_ item: CleanableItem) throws {
+    private static func removeSdkPackage(_ item: CleanableItem) throws -> Bool {
         let packages = sdkPackages(at: item.path)
         if !packages.isEmpty, let sdkmanager = androidTool("sdkmanager") {
             let result = Shell.run(sdkmanager, arguments: ["--sdk_root=\(androidSdkPath)", "--uninstall"] + packages,
                                    environment: androidToolEnvironment)
-            if result.status == 0 && !FileManager.default.fileExists(atPath: item.path) { return }
+            if result.status == 0 && !FileManager.default.fileExists(atPath: item.path) { return false }
         }
         try deleteFiles(at: item.path, permanently: false)
+        return true
     }
 
     /// sdkmanager package paths for a folder: platforms/android-34 → "platforms;android-34",

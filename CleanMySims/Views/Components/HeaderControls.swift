@@ -29,9 +29,10 @@ struct IconPillButton: View {
 /// Gray rounded label showing a size.
 struct SizePill: View {
     let size: Int64
+    var isEstimate = false
 
     var body: some View {
-        Text(size.formatted(.byteCount(style: .file)))
+        Text((isEstimate ? "≈ " : "") + size.formatted(.byteCount(style: .file)))
             .font(.system(size: 13, weight: .semibold, design: .monospaced))
             .foregroundStyle(Theme.Colors.secondaryText)
             .contentTransition(.numericText())

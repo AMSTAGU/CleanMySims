@@ -12,7 +12,31 @@ import Observation
 final class SimulatorManager {
     struct CategoryStats: Equatable {
         var count: Int
+        /// Sum of the items' sizes. Overstates clones, which share their blocks.
         var size: Int64
+        /// Estimate of what deleting the whole category frees (see `CleanableItem.reclaimableSize`).
+        var reclaimable: Int64
+
+        init(_ items: [CleanableItem]) {
+            count = items.count
+            size = items.reduce(0) { $0 + $1.size }
+            reclaimable = CleanableItem.reclaimableSize(of: items)
+        }
+
+        /// Clones make the listed sizes add up to much more than what can be freed.
+        var isShared: Bool { reclaimable < size * 9 / 10 }
+    }
+
+    /// What the last clean did, measured on the disk.
+    struct CleanResult: Equatable {
+        let removedCount: Int
+        /// Free space gained on the volume since the clean started.
+        var freed: Int64
+        /// Size of the items moved to the Trash: freed only once it is emptied.
+        let trashed: Int64
+        /// APFS and CoreSimulator release blocks in the background, up to ~20 s after the deletions:
+        /// true while the free space is still being watched.
+        var isMeasuring: Bool
     }
 
     enum CategoryState {
@@ -46,13 +70,16 @@ final class SimulatorManager {
     private(set) var cleaningTotal = 0
     /// Items the last clean couldn't remove, with the reason. They stay in the lists.
     var cleaningFailures: [(item: CleanableItem, reason: String)] = []
+    var lastCleanResult: CleanResult?
 
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var lastTreemapRefresh = Date.distantPast
+    @ObservationIgnored private var measureTask: Task<Void, Never>?
     private let treemapRefreshInterval: TimeInterval = 0.8
 
+    /// Estimate of the space all categories free, clones counted once.
     var totalSize: Int64 {
-        categoryStats.values.reduce(0) { $0 + $1.size }
+        categoryStats.values.reduce(0) { $0 + $1.reclaimable }
     }
 
     var safeItems: [CleanableItem] {
@@ -60,16 +87,16 @@ final class SimulatorManager {
     }
 
     var safeSize: Int64 {
-        categoryStats.filter { $0.key.isSafeToDelete }.values.reduce(0) { $0 + $1.size }
+        categoryStats.filter { $0.key.isSafeToDelete }.values.reduce(0) { $0 + $1.reclaimable }
     }
 
     /// Size to show for a category: the final total once it is scanned, the running count before that.
     func size(of type: CleanableItemType) -> Int64 {
-        categoryStats[type]?.size ?? progress.found[type] ?? 0
+        categoryStats[type]?.reclaimable ?? progress.found[type] ?? 0
     }
 
     func treemapSize(of type: CleanableItemType) -> Int64 {
-        categoryStats[type]?.size ?? treemapFound[type] ?? 0
+        categoryStats[type]?.reclaimable ?? treemapFound[type] ?? 0
     }
 
     func state(of type: CleanableItemType) -> CategoryState {
@@ -142,12 +169,12 @@ final class SimulatorManager {
         case .finished(let type, let newItems):
             progress.scanning.remove(type)
             progress.done.insert(type)
-            let size = newItems.reduce(0) { $0 + $1.size }
-            progress.found[type] = size
-            treemapFound[type] = size
+            let stats = CategoryStats(newItems)
+            progress.found[type] = stats.reclaimable
+            treemapFound[type] = stats.reclaimable
             if !newItems.isEmpty {
                 items.append(contentsOf: newItems)
-                categoryStats[type] = CategoryStats(count: newItems.count, size: size)
+                categoryStats[type] = stats
             }
         }
     }
@@ -179,37 +206,74 @@ final class SimulatorManager {
         cleaningDone = 0
         cleaningTotal = itemsToClean.count
         cleaningFailures = []
+        lastCleanResult = nil
+        measureTask?.cancel()
 
         Task {
+            let freeBefore = Self.availableBytes()
             var failures: [(item: CleanableItem, reason: String)] = []
+            var removed: [CleanableItem] = []
+            var trashed: Int64 = 0
             for item in itemsToClean {
-                let failure = await Task.detached(priority: .userInitiated) { () -> String? in
-                    do {
-                        try DiskScanner.remove(item)
-                        return nil
-                    } catch {
-                        return error.localizedDescription
-                    }
+                let outcome = await Task.detached(priority: .userInitiated) { () -> Result<Bool, Error> in
+                    Result { try DiskScanner.remove(item) }
                 }.value
-                if let failure {
-                    failures.append((item, failure))
-                } else {
+                switch outcome {
+                case .success(let wentToTrash):
+                    if wentToTrash { trashed += item.size } else { removed.append(item) }
                     forget(item)
+                case .failure(let error):
+                    failures.append((item, error.localizedDescription))
                 }
                 cleaningDone += 1
             }
             isCleaning = false
             cleaningFailures = failures
-            refreshFreeSpace()
+            let removedCount = itemsToClean.count - failures.count
+            guard removedCount > 0, let freeBefore else { return }
+
+            lastCleanResult = CleanResult(removedCount: removedCount, freed: 0, trashed: trashed, isMeasuring: true)
+            let expected = CleanableItem.reclaimableSize(of: removed)
+            measureTask = Task { await measureFreedSpace(since: freeBefore, expected: expected) }
         }
     }
 
     private func forget(_ item: CleanableItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id && $0.type == item.type }) else { return }
         items.remove(at: index)
-        guard var stats = categoryStats[item.type] else { return }
-        stats.count -= 1
-        stats.size -= item.size
-        categoryStats[item.type] = stats.count > 0 ? stats : nil
+        let remaining = items(of: item.type)
+        categoryStats[item.type] = remaining.isEmpty ? nil : CategoryStats(remaining)
+    }
+
+    /// Watches the free space after a clean until it stops growing (blocks are released in the
+    /// background), so the banner shows what was really gained.
+    private func measureFreedSpace(since freeBefore: Int64, expected: Int64) async {
+        let start = Date()
+        var lastGrowth = Date()
+        var freed: Int64 = 0
+        while expected > 50_000_000, Date().timeIntervalSince(start) < 60, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(2))
+            guard let now = Self.availableBytes() else { break }
+            let current = max(0, now - freeBefore)
+            if current > freed + 10_000_000 {
+                freed = current
+                lastGrowth = Date()
+            }
+            lastCleanResult?.freed = freed
+            // Done once most of the estimate came back, or nothing moved for 10 s after it started
+            if freed >= expected * 9 / 10 || (freed > 0 && Date().timeIntervalSince(lastGrowth) > 10) { break }
+        }
+        guard !Task.isCancelled else { return }
+        if let now = Self.availableBytes() {
+            lastCleanResult?.freed = max(freed, now - freeBefore, 0)
+        }
+        lastCleanResult?.isMeasuring = false
+        refreshFreeSpace()
+    }
+
+    /// Free bytes on the home volume, without purgeable space (so before/after compare real deletions).
+    private static func availableBytes() -> Int64? {
+        let values = try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: [.volumeAvailableCapacityKey])
+        return values?.volumeAvailableCapacity.map(Int64.init)
     }
 }

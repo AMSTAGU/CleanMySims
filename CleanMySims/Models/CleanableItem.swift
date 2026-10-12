@@ -155,8 +155,29 @@ nonisolated struct CleanableItem: Identifiable, Hashable, Sendable {
     let details: String?
     var appIconPath: String? = nil
     var buildGroup: BuildGroup? = nil
+    /// Part of `size` not shared with APFS clones: what deleting this item alone frees.
+    /// Only measured for simulators, which Xcode clones; equal to `size` elsewhere.
+    var exclusiveSize: Int64? = nil
+    /// Simulators with the same key (device type and runtime) are likely clones of each other.
+    var cloneGroup: String? = nil
+
+    var ownSize: Int64 { exclusiveSize ?? size }
+
+    /// Most of the item is shared with clones.
+    var isMostlyShared: Bool { ownSize < size * 9 / 10 }
 
     var sizeString: String {
         size.formatted(.byteCount(style: .file))
+    }
+
+    /// Estimate of the space freed by deleting all `items` together. Clones share blocks, so for each
+    /// group of likely clones count the largest one in full plus what the others don't share.
+    /// Exact when nothing is shared; otherwise between the sum of `ownSize` and the sum of `size`.
+    static func reclaimableSize(of items: [CleanableItem]) -> Int64 {
+        Dictionary(grouping: items) { $0.cloneGroup ?? $0.id }.values.reduce(0) { total, group in
+            guard let largest = group.max(by: { $0.size < $1.size }) else { return total }
+            let others = group.filter { $0.id != largest.id }.reduce(0) { $0 + $1.ownSize }
+            return total + largest.size + others
+        }
     }
 }

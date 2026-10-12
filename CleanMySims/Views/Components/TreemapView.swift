@@ -12,6 +12,8 @@ struct TreemapView: View {
         let size: Int64
         let itemCount: Int
         let isActive: Bool
+        /// The size is an estimate (clones share their data).
+        var isEstimate = false
     }
 
     /// Laid out in the given order (not re-sorted by size), so tiles grow in place
@@ -59,7 +61,7 @@ private struct TreemapTile: View {
     @State private var isHovered = false
 
     private var title: String { entry.type.title }
-    private var sizeText: String { entry.size.formatted(.byteCount(style: .file)) }
+    private var sizeText: String { (entry.isEstimate ? "≈ " : "") + entry.size.formatted(.byteCount(style: .file)) }
 
     var body: some View {
         Button(action: action) {

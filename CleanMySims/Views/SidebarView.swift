@@ -69,7 +69,11 @@ struct SidebarView: View {
                     ProgressView().controlSize(.mini)
                 case .done:
                     let size = manager.size(of: type)
-                    if size > 0 { sizeText(size) } else { sizeText(nil) }
+                    if size > 0 {
+                        sizeText(size, isEstimate: manager.categoryStats[type]?.isShared ?? false)
+                    } else {
+                        sizeText(nil)
+                    }
                     if manager.isScanning {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11))
@@ -81,8 +85,8 @@ struct SidebarView: View {
         .opacity(state == .pending ? 0.5 : 1)
     }
 
-    private func sizeText(_ size: Int64?, color: Color = Theme.Colors.secondaryText) -> some View {
-        Text(size.map { $0.formatted(.byteCount(style: .file)) } ?? "—")
+    private func sizeText(_ size: Int64?, color: Color = Theme.Colors.secondaryText, isEstimate: Bool = false) -> some View {
+        Text(size.map { (isEstimate ? "≈" : "") + $0.formatted(.byteCount(style: .file)) } ?? "—")
             .font(Theme.Fonts.size)
             .lineLimit(1)
             .fixedSize()

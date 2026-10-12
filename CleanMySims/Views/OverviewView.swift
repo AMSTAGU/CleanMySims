@@ -118,7 +118,8 @@ struct OverviewView: View {
                 type: type,
                 size: manager.treemapSize(of: type),
                 itemCount: manager.categoryStats[type]?.count ?? 0,
-                isActive: manager.state(of: type) == .scanning
+                isActive: manager.state(of: type) == .scanning,
+                isEstimate: manager.categoryStats[type]?.isShared ?? false
             )
         }
         if !manager.isScanning && manager.lastScanDate != nil && manager.totalSize == 0 {
