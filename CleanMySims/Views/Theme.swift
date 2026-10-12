@@ -8,14 +8,16 @@ import AppKit
 
 enum Theme {
     enum Colors {
-        // Surfaces
-        static let background = Color(light: 0xF7F7F9, dark: 0x1C1C1E)
-        static let sidebar = Color(light: 0xECECEF, dark: 0x232325)
-        static let card = Color(light: 0xFFFFFF, dark: 0x2A2A2D)
-        static let border = Color(light: 0xE1E1E5, dark: 0x3A3A3D)
-        static let selection = Color(light: 0xDCDCE0, dark: 0x3A3A3D)
-        static let hoverBackground = Color(light: 0xE6E6EA, dark: 0x313134)
-        static let track = Color(light: 0xE3E3E8, dark: 0x2E2E31)
+        // Surfaces: translucent, drawn over the window's material
+        static let background = Color.clear
+        static let sidebar = Color.primary.opacity(0.03)
+        static let card = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.45, darkAlpha: 0.06)
+        static let cardStroke = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.8, darkAlpha: 0.1)
+        static let border = Color.primary.opacity(0.1)
+        static let selection = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.8, darkAlpha: 0.12)
+        static let hoverBackground = Color.primary.opacity(0.06)
+        /// Fill of the small gray controls (sort, size pill).
+        static let control = Color.primary.opacity(0.07)
 
         // Text
         static let primaryText = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
@@ -25,7 +27,8 @@ enum Theme {
         static let accent = Color(light: 0x0A64D6, dark: 0x0A84FF)
         static let safe = Color(light: 0x248A3D, dark: 0x32D74B)
         static let safeBackground = Color(light: 0x34C759, dark: 0x32D74B).opacity(0.15)
-        static let danger = Color(light: 0xD70015, dark: 0xFF453A)
+        static let danger = Color(light: 0xFF3B30, dark: 0xFF453A)
+        static let reveal = Color(light: 0x007AFF, dark: 0x0A84FF)
         static let success = safe
 
         /// Category accent: fills the icon squares, same in both appearances.
@@ -33,13 +36,11 @@ enum Theme {
             Color(nsColor: nsColor(for: type))
         }
 
-        /// Pastel version of the category color, used behind treemap tiles.
+        /// Translucent tint of the category color, used behind treemap tiles.
         static func tileBackground(for type: CleanableItemType) -> Color {
             let base = nsColor(for: type)
             return Color(nsColor: NSColor(name: nil) { appearance in
-                appearance.isDark
-                    ? base.blended(withFraction: 0.72, of: NSColor(hex: 0x1C1C1E)) ?? base
-                    : base.blended(withFraction: 0.82, of: .white) ?? base
+                base.withAlphaComponent(appearance.isDark ? 0.28 : 0.2)
             })
         }
 
@@ -65,12 +66,14 @@ enum Theme {
         static let body = Font.system(size: 13)
         static let caption = Font.system(size: 11)
         static let headline = Font.system(size: 15, weight: .semibold)
+        /// Sizes in lists and the sidebar.
+        static let size = Font.system(size: 11, design: .monospaced)
     }
 
     enum Layout {
         static let windowWidth: CGFloat = 860
         static let windowHeight: CGFloat = 600
-        static let sidebarWidth: CGFloat = 228
+        static let sidebarWidth: CGFloat = 240
     }
 }
 
@@ -121,9 +124,9 @@ extension NSColor {
 
 extension Color {
     /// A color that follows the window's appearance.
-    init(light: UInt32, dark: UInt32) {
+    init(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) {
         self.init(nsColor: NSColor(name: nil) { appearance in
-            NSColor(hex: appearance.isDark ? dark : light)
+            appearance.isDark ? NSColor(hex: dark, alpha: darkAlpha) : NSColor(hex: light, alpha: lightAlpha)
         })
     }
 }

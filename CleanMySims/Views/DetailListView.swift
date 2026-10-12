@@ -12,12 +12,32 @@ struct DetailListView: View {
     @State private var itemToDelete: CleanableItem?
     @State private var confirmCleanAll = false
 
-    enum SortOrder: String, CaseIterable, Identifiable {
-        case sizeDescending = "Largest first"
-        case sizeAscending = "Smallest first"
-        case name = "Name"
+    enum SortOrder {
+        case sizeDescending, sizeAscending, name
 
-        var id: Self { self }
+        var label: String {
+            switch self {
+            case .sizeDescending: return "Largest first"
+            case .sizeAscending: return "Smallest first"
+            case .name: return "By name"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .sizeDescending: return "arrow.down"
+            case .sizeAscending: return "arrow.up"
+            case .name: return "arrow.up.arrow.down"
+            }
+        }
+
+        var next: SortOrder {
+            switch self {
+            case .sizeDescending: return .sizeAscending
+            case .sizeAscending: return .name
+            case .name: return .sizeDescending
+            }
+        }
     }
 
     private var items: [CleanableItem] {
@@ -87,18 +107,16 @@ struct DetailListView: View {
                         SafeBadge()
                     }
                 }
-                Text("^[\(items.count) item](inflect: true) · \(total.formatted(.byteCount(style: .file)))")
+                Text("^[\(items.count) item](inflect: true)")
                     .font(.system(size: 12))
-                    .monospacedDigit()
                     .foregroundStyle(Theme.Colors.secondaryText)
             }
             Spacer()
-            Picker("Sort", selection: $sortOrder) {
-                ForEach(SortOrder.allCases) { Text($0.rawValue).tag($0) }
+            IconPillButton(systemName: sortOrder.icon, help: sortOrder.label) {
+                withAnimation(.easeInOut(duration: 0.2)) { sortOrder = sortOrder.next }
             }
-            .labelsHidden()
-            .fixedSize()
-            Button("Clean All", role: .destructive) {
+            SizePill(size: total)
+            CleanButton {
                 confirmCleanAll = true
             }
             .disabled(items.isEmpty || manager.isScanning)
@@ -131,7 +149,7 @@ struct DetailListView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.Colors.border)
+                .strokeBorder(Theme.Colors.cardStroke)
         }
     }
 
@@ -184,13 +202,14 @@ private struct DetailRow: View {
             Spacer(minLength: 8)
 
             Text(item.sizeString)
-                .font(.system(size: 13))
-                .monospacedDigit()
+                .font(Theme.Fonts.size)
+                .foregroundStyle(Theme.Colors.secondaryText)
 
             // Always laid out so rows don't jump on hover
-            HStack(spacing: 2) {
+            HStack(spacing: 12) {
                 Button(action: reveal) {
                     Image(systemName: "folder")
+                        .foregroundStyle(Theme.Colors.reveal)
                 }
                 .help("Reveal in Finder")
                 .disabled(item.path.isEmpty)
@@ -200,7 +219,8 @@ private struct DetailRow: View {
                 }
                 .help("Delete")
             }
-            .buttonStyle(.borderless)
+            .font(.system(size: 14))
+            .buttonStyle(.plain)
             .opacity(isHovered ? 1 : 0)
         }
         .padding(.horizontal, 14)
@@ -243,13 +263,13 @@ private struct BuildGroupHeader: View {
                 .foregroundStyle(Theme.Colors.secondaryText)
             Spacer()
             Text(items.reduce(0) { $0 + $1.size }.formatted(.byteCount(style: .file)))
-                .monospacedDigit()
+                .font(Theme.Fonts.size)
                 .foregroundStyle(Theme.Colors.secondaryText)
         }
         .font(.system(size: 12))
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .background(Theme.Colors.background)
+        .background(.regularMaterial)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.Colors.border).frame(height: 1)
         }

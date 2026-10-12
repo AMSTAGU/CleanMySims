@@ -14,18 +14,16 @@ struct TreemapView: View {
         let isActive: Bool
     }
 
+    /// Laid out in the given order (not re-sorted by size), so tiles grow in place
+    /// during a scan and never swap places when it ends.
     let entries: [Entry]
-    /// Keep the categories in their declared order instead of sorting by size,
-    /// so tiles grow in place while a scan is running.
-    var keepsOrder = false
     var onSelect: (CleanableItemType) -> Void = { _ in }
 
     private let spacing: CGFloat = 4
 
     var body: some View {
         GeometryReader { geometry in
-            let nonEmpty = entries.filter { $0.size > 0 }
-            let visible = keepsOrder ? nonEmpty : nonEmpty.sorted { $0.size > $1.size }
+            let visible = entries.filter { $0.size > 0 }
             let rects = Treemap.layout(
                 visible.map { Double($0.size) },
                 in: CGRect(origin: .zero, size: geometry.size)
@@ -43,7 +41,7 @@ struct TreemapView: View {
             }
             .padding(-spacing / 2)
         }
-        .animation(.smooth(duration: 0.35), value: entries)
+        .animation(.easeInOut(duration: 0.8), value: entries)
     }
 }
 
@@ -135,7 +133,7 @@ private struct TreemapTile: View {
 
 /// Squarified treemap layout (Bruls, Huizing & van Wijk).
 enum Treemap {
-    /// Rectangles for `values` (sorted largest first), in the same order.
+    /// Rectangles for `values`, in the same order. Squarest when sorted largest first.
     static func layout(_ values: [Double], in rect: CGRect) -> [CGRect] {
         let total = values.reduce(0, +)
         guard total > 0, rect.width > 0, rect.height > 0 else {

@@ -47,17 +47,18 @@ struct OverviewView: View {
                 .foregroundStyle(Theme.Colors.secondaryText)
             Spacer()
             if manager.isScanning {
-                Button("Stop", action: manager.stopScan)
+                IconPillButton(systemName: "stop.fill", help: "Stop scanning", action: manager.stopScan)
                     .keyboardShortcut(.cancelAction)
             } else {
-                Button {
+                IconPillButton(systemName: "arrow.clockwise", help: "Rescan (⌘R)") {
                     manager.scan()
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
                 }
             }
+            CleanButton(title: "Clean safe items") {
+                confirmSafeClean = true
+            }
+            .disabled(manager.isScanning || manager.safeSize == 0)
         }
-        .controlSize(.regular)
     }
 
     @ViewBuilder
@@ -76,7 +77,7 @@ struct OverviewView: View {
         let total = manager.isScanning ? manager.progress.totalFound : manager.totalSize
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(total.formatted(.byteCount(style: .file)))
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(total)))
                 .animation(.default, value: total)
@@ -115,7 +116,7 @@ struct OverviewView: View {
         let entries = CleanableItemType.allCases.map { type in
             TreemapView.Entry(
                 type: type,
-                size: manager.size(of: type),
+                size: manager.treemapSize(of: type),
                 itemCount: manager.categoryStats[type]?.count ?? 0,
                 isActive: manager.state(of: type) == .scanning
             )
@@ -125,7 +126,7 @@ struct OverviewView: View {
                                    description: Text("No Xcode or Android data was found."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            TreemapView(entries: entries, keepsOrder: manager.isScanning) { type in
+            TreemapView(entries: entries) { type in
                 selection = .category(type)
             }
             .frame(maxHeight: .infinity)
@@ -153,19 +154,14 @@ struct OverviewView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 8)
-            Button("Clean safe items") {
-                confirmSafeClean = true
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.Colors.accent)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.Colors.border)
+                .strokeBorder(Theme.Colors.cardStroke)
         }
     }
 }

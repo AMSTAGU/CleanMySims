@@ -5,19 +5,31 @@
 
 import SwiftUI
 
-/// White SF Symbol on a rounded square of the category color (System Settings style).
+/// White SF Symbol on a rounded square filled with a gradient of the category color.
 struct CategoryIcon: View {
     let type: CleanableItemType
-    var size: CGFloat = 22
+    var size: CGFloat = 24
 
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
-            .fill(Theme.Colors.color(for: type))
+        GradientIcon(systemName: type.iconName, color: Theme.Colors.color(for: type), size: size)
+    }
+}
+
+struct GradientIcon: View {
+    let systemName: String
+    let color: Color
+    var size: CGFloat = 24
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size / 3, style: .continuous)
+            .fill(LinearGradient(colors: [color, color.opacity(0.5)], startPoint: .bottomTrailing, endPoint: .topLeading))
+            .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
             .frame(width: size, height: size)
             .overlay {
-                Image(systemName: type.iconName)
-                    .font(.system(size: size * 0.5, weight: .semibold))
+                Image(systemName: systemName)
+                    .font(.system(size: size / 2, weight: .semibold))
                     .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
             }
             .accessibilityHidden(true)
     }

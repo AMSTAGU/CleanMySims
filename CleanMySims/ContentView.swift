@@ -15,7 +15,7 @@ struct ContentView: View {
                 .frame(width: Theme.Layout.sidebarWidth)
 
             Rectangle()
-                .fill(Theme.Colors.border)
+                .fill(Color.black.opacity(0.1))
                 .frame(width: 1)
 
             Group {
@@ -40,6 +40,7 @@ struct ContentView: View {
         .animation(.easeOut(duration: 0.2), value: manager.isCleaning)
         .ignoresSafeArea()
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
+        .containerBackground(.thickMaterial, for: .window)
         .task {
             if manager.lastScanDate == nil && !manager.isScanning {
                 manager.scan()
@@ -71,7 +72,7 @@ private struct CleaningOverlay: View {
                     .foregroundStyle(Theme.Colors.secondaryText)
             }
             .padding(24)
-            .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 20, y: 8)
         }
     }

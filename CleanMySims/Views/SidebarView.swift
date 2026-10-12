@@ -22,14 +22,7 @@ struct SidebarView: View {
             SidebarRow(isSelected: selection == .overview, help: nil) {
                 selection = .overview
             } icon: {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.Colors.primaryText)
-                    .frame(width: 22, height: 22)
-                    .overlay {
-                        Image(systemName: "square.grid.2x2.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.Colors.sidebar)
-                    }
+                GradientIcon(systemName: "square.grid.2x2.fill", color: Theme.Colors.primaryText)
             } label: {
                 Text("Overview").fontWeight(.medium)
             } trailing: {
@@ -90,8 +83,7 @@ struct SidebarView: View {
 
     private func sizeText(_ size: Int64?, color: Color = Theme.Colors.secondaryText) -> some View {
         Text(size.map { $0.formatted(.byteCount(style: .file)) } ?? "—")
-            .font(.system(size: 11))
-            .monospacedDigit()
+            .font(Theme.Fonts.size)
             .lineLimit(1)
             .fixedSize()
             .foregroundStyle(color)
@@ -142,8 +134,12 @@ private struct SidebarRow<Icon: View, Label: View, Trailing: View>: View {
                 trailing
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.vertical, 3)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(background)
+                    .shadow(color: .black.opacity(isSelected ? 0.05 : 0), radius: 2, y: 1)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

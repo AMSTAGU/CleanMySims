@@ -35,6 +35,9 @@ final class SimulatorManager {
     private(set) var categoryStats: [CleanableItemType: CategoryStats] = [:]
     private(set) var isScanning = false
     private(set) var progress = ScanProgress()
+    /// Category sizes for the treemap during a scan, refreshed at most every `treemapRefreshInterval`
+    /// so tiles move smoothly instead of jittering on every measured file.
+    private(set) var treemapFound: [CleanableItemType: Int64] = [:]
     private(set) var lastScanDate: Date?
     private(set) var freeSpace: Int64?
 
@@ -43,6 +46,8 @@ final class SimulatorManager {
     private(set) var cleaningTotal = 0
 
     @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var lastTreemapRefresh = Date.distantPast
+    private let treemapRefreshInterval: TimeInterval = 0.8
 
     var totalSize: Int64 {
         categoryStats.values.reduce(0) { $0 + $1.size }
@@ -59,6 +64,10 @@ final class SimulatorManager {
     /// Size to show for a category: the final total once it is scanned, the running count before that.
     func size(of type: CleanableItemType) -> Int64 {
         categoryStats[type]?.size ?? progress.found[type] ?? 0
+    }
+
+    func treemapSize(of type: CleanableItemType) -> Int64 {
+        categoryStats[type]?.size ?? treemapFound[type] ?? 0
     }
 
     func state(of type: CleanableItemType) -> CategoryState {
@@ -80,6 +89,7 @@ final class SimulatorManager {
         items = []
         categoryStats = [:]
         progress = ScanProgress()
+        treemapFound = [:]
         isScanning = true
 
         let (events, continuation) = AsyncStream.makeStream(of: ScanEvent.self)
@@ -123,11 +133,16 @@ final class SimulatorManager {
         case .measured(let type, let bytes, let path):
             progress.found[type, default: 0] += bytes
             progress.currentPath = path
+            if Date().timeIntervalSince(lastTreemapRefresh) >= treemapRefreshInterval {
+                lastTreemapRefresh = Date()
+                treemapFound = progress.found
+            }
         case .finished(let type, let newItems):
             progress.scanning.remove(type)
             progress.done.insert(type)
             let size = newItems.reduce(0) { $0 + $1.size }
             progress.found[type] = size
+            treemapFound[type] = size
             if !newItems.isEmpty {
                 items.append(contentsOf: newItems)
                 categoryStats[type] = CategoryStats(count: newItems.count, size: size)
