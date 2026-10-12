@@ -7,364 +7,257 @@ import SwiftUI
 
 struct DetailListView: View {
     let category: CleanableItemType
-    @Environment(SimulatorManager.self) private var simulatorManager
-    @State private var sortOrder: SortOrder = .defaultOrder
-    @State private var showDeleteConfirm = false
+    @Environment(SimulatorManager.self) private var manager
+    @State private var sortOrder: SortOrder = .sizeDescending
     @State private var itemToDelete: CleanableItem?
-    @State private var showCleanAllConfirm = false
+    @State private var confirmCleanAll = false
 
-    enum SortOrder {
-        case defaultOrder
-        case sizeDesc
-        case sizeAsc
+    enum SortOrder: String, CaseIterable, Identifiable {
+        case sizeDescending = "Largest first"
+        case sizeAscending = "Smallest first"
+        case name = "Name"
 
-        var label: String {
-            switch self {
-            case .defaultOrder: return "Default"
-            case .sizeAsc: return "Size ↑"
-            case .sizeDesc: return "Size ↓"
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .defaultOrder: return "arrow.up.arrow.down"
-            case .sizeAsc: return "arrow.up"
-            case .sizeDesc: return "arrow.down"
-            }
-        }
-
-        var next: SortOrder {
-            switch self {
-            case .defaultOrder: return .sizeDesc
-            case .sizeDesc: return .sizeAsc
-            case .sizeAsc: return .defaultOrder
-            }
-        }
+        var id: Self { self }
     }
 
-    // Compute once, reuse everywhere
-    private var currentItems: [CleanableItem] {
-        let items = simulatorManager.items.filter { $0.type == category }
+    private var items: [CleanableItem] {
+        let items = manager.items(of: category)
         switch sortOrder {
-        case .defaultOrder:
-            return items
-        case .sizeAsc:
-            return items.sorted { $0.size < $1.size }
-        case .sizeDesc:
-            return items.sorted { $0.size > $1.size }
+        case .name: return items
+        case .sizeDescending: return items.sorted { $0.size > $1.size }
+        case .sizeAscending: return items.sorted { $0.size < $1.size }
         }
     }
 
     var body: some View {
-        let items = currentItems
-        let total = items.reduce(0 as Int64) { $0 + $1.size }
+        let items = items
+        let total = items.reduce(0) { $0 + $1.size }
 
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text(category.rawValue)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Theme.Colors.primaryText)
+        VStack(alignment: .leading, spacing: 14) {
+            header(items: items, total: total)
 
-                Spacer()
+            Text(category.helpText)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.Colors.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 12) {
-                    // Sort Button (Toggle)
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            sortOrder = sortOrder.next
-                        }
-                    }) {
-                        Image(systemName: sortOrder.icon)
-                            .font(.system(size: 14, weight: .medium))
-                            .frame(width: 32, height: 32)
-                            .background(Theme.Colors.hoverBackground)
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .help(sortOrder.label)
-
-                    // Size Display
-                    Text(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(Theme.Colors.hoverBackground)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.black.opacity(0.05), lineWidth: 1)
-                        )
-                        .fixedSize()
-
-                    // Clean Button
-                    Button(action: {
-                        showCleanAllConfirm = true
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "trash.fill")
-                            Text("Clean")
-                                .fontWeight(.semibold)
-                        }
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .frame(height: 32)
-                        .background(
-                            Capsule()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color(hex: "FF3B30"), Color(hex: "FF3B30").opacity(0.8)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                        )
-                        .shadow(color: Color.red.opacity(0.3), radius: 2, y: 1)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(items.isEmpty)
-                    .opacity(items.isEmpty ? 0.5 : 1.0)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-
-            // Content
             if items.isEmpty {
-                VStack(spacing: 16) {
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(Theme.Colors.success)
-                    Text("All clean!")
-                        .font(Theme.Fonts.headline)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if category == .builds {
-                // Grouped display for Builds tab
-                let grouped = Dictionary(grouping: items) { $0.buildGroup ?? .apps }
-                let sortedGroups = grouped.keys.sorted()
-
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(sortedGroups, id: \.self) { group in
-                            if let groupItems = grouped[group] {
-                                // Section header
-                                SectionHeader(
-                                    group: group,
-                                    count: groupItems.count,
-                                    totalSize: groupItems.reduce(0) { $0 + $1.size }
-                                )
-
-                                ForEach(groupItems) { item in
-                                    DetailRow(
-                                        item: item,
-                                        accentColor: Theme.Colors.color(for: category)
-                                    ) {
-                                        itemToDelete = item
-                                        showDeleteConfirm = true
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                emptyState
             } else {
-                // Flat list for other tabs
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(items) { item in
-                            DetailRow(
-                                item: item,
-                                accentColor: Theme.Colors.color(for: category)
-                            ) {
-                                itemToDelete = item
-                                showDeleteConfirm = true
-                            }
+                list(items)
+            }
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 18)
+        .padding(.bottom, 22)
+        .alert(
+            "Delete \(itemToDelete?.name ?? "item")?",
+            isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } }),
+            presenting: itemToDelete
+        ) { item in
+            Button("Delete", role: .destructive) { manager.delete(item) }
+        } message: { item in
+            Text("\(item.sizeString) will be freed. \(removalNote)")
+        }
+        .alert("Clean all \(category.title.lowercased())?", isPresented: $confirmCleanAll) {
+            Button("Clean", role: .destructive) { manager.clean(items) }
+        } message: {
+            Text("^[\(items.count) item](inflect: true), \(total.formatted(.byteCount(style: .file))). \(removalNote)")
+        }
+    }
+
+    private var removalNote: String {
+        switch category {
+        case .virtualDevice, .testClones, .previews: return "Deleted with simctl."
+        case .runtimes: return "Removed with simctl runtime delete."
+        default: return "Moved to the Trash."
+        }
+    }
+
+    // MARK: - Header
+
+    private func header(items: [CleanableItem], total: Int64) -> some View {
+        HStack(spacing: 12) {
+            CategoryIcon(type: category, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(category.title)
+                        .font(.system(size: 17, weight: .semibold))
+                    if category.isSafeToDelete {
+                        SafeBadge()
+                    }
+                }
+                Text("^[\(items.count) item](inflect: true) · \(total.formatted(.byteCount(style: .file)))")
+                    .font(.system(size: 12))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.secondaryText)
+            }
+            Spacer()
+            Picker("Sort", selection: $sortOrder) {
+                ForEach(SortOrder.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            Button("Clean All", role: .destructive) {
+                confirmCleanAll = true
+            }
+            .disabled(items.isEmpty || manager.isScanning)
+        }
+    }
+
+    // MARK: - List
+
+    @ViewBuilder
+    private func list(_ items: [CleanableItem]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                if category == .builds {
+                    let groups = Dictionary(grouping: items) { $0.buildGroup ?? .apps }
+                    ForEach(groups.keys.sorted(), id: \.self) { group in
+                        let groupItems = groups[group] ?? []
+                        Section {
+                            rows(groupItems)
+                        } header: {
+                            BuildGroupHeader(group: group, items: groupItems)
                         }
                     }
+                } else {
+                    rows(items)
                 }
             }
         }
-
+        .scrollIndicators(.automatic)
+        .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            if showDeleteConfirm, let item = itemToDelete {
-                ZStack {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Theme.Colors.border)
+        }
+    }
 
-                    ConfirmDialog(
-                        title: "Delete this item?",
-                        message: "\(item.sizeString) will be freed.",
-                        detail: "\"\(item.name)\"",
-                        confirmTitle: "Delete",
-                        isDangerous: true,
-                        onConfirm: {
-                            simulatorManager.delete(item)
-                            showDeleteConfirm = false
-                            itemToDelete = nil
-                        },
-                        onCancel: {
-                            showDeleteConfirm = false
-                            itemToDelete = nil
-                        }
-                    )
-                }
-            }
-
-            if showCleanAllConfirm {
-                ZStack {
-                    Color.black.opacity(0.3)
-                        .ignoresSafeArea()
-
-                    ConfirmDialog(
-                        title: "Clean \(category.rawValue)?",
-                        message: "\(items.count) items, \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) will be deleted.",
-                        detail: nil,
-                        confirmTitle: "Clean",
-                        isDangerous: true,
-                        onConfirm: {
-                            simulatorManager.clean(items)
-                            showCleanAllConfirm = false
-                        },
-                        onCancel: {
-                            showCleanAllConfirm = false
-                        }
-                    )
-                }
+    private func rows(_ items: [CleanableItem]) -> some View {
+        ForEach(items) { item in
+            DetailRow(item: item, isFirst: item.id == items.first?.id) {
+                itemToDelete = item
             }
         }
     }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        Group {
+            if manager.state(of: category) != .done {
+                ProgressView("Scanning…")
+            } else {
+                ContentUnavailableView("All clean", systemImage: "checkmark.circle",
+                                       description: Text("Nothing to remove here."))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
-struct DetailRow: View {
+private struct DetailRow: View {
     let item: CleanableItem
-    let accentColor: Color
+    let isFirst: Bool
     let onDelete: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 12) {
-            // Icon
-            AsyncIconView(
-                itemPath: item.path,
-                appIconPath: item.appIconPath
-            )
-            .frame(width: 32, height: 32)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            AsyncIconView(itemPath: item.path, appIconPath: item.appIconPath)
+                .frame(width: 28, height: 28)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name)
-                    .font(Theme.Fonts.body.weight(.bold))
-                    .foregroundStyle(Theme.Colors.primaryText)
+                    .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
-
-                if let details = item.details {
-                    Text(details)
-                        .font(Theme.Fonts.caption)
-                        .foregroundStyle(Theme.Colors.secondaryText)
-                }
-
-                Text(item.path)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.Colors.secondaryText.opacity(0.6))
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.Colors.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             Text(item.sizeString)
-                .font(Theme.Fonts.mono)
-                .foregroundStyle(Theme.Colors.secondaryText)
+                .font(.system(size: 13))
+                .monospacedDigit()
 
-            // Actions — ALWAYS present, visibility controlled by opacity (no layout change)
-            HStack(spacing: 12) {
-                Button(action: {
-                    NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
-                }) {
+            // Always laid out so rows don't jump on hover
+            HStack(spacing: 2) {
+                Button(action: reveal) {
                     Image(systemName: "folder")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(hex: "007AFF"))
                 }
-                .buttonStyle(.plain)
                 .help("Reveal in Finder")
-
+                .disabled(item.path.isEmpty)
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .font(.system(size: 14))
                         .foregroundStyle(Theme.Colors.danger)
                 }
-                .buttonStyle(.plain)
                 .help("Delete")
             }
+            .buttonStyle(.borderless)
             .opacity(isHovered ? 1 : 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(isHovered ? Theme.Colors.hoverBackground : Color.clear)
-        .onHover { hovered in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovered
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(isHovered ? Theme.Colors.hoverBackground.opacity(0.6) : .clear)
+        .overlay(alignment: .top) {
+            if !isFirst {
+                Rectangle().fill(Theme.Colors.border).frame(height: 1).padding(.leading, 54)
             }
         }
-        .overlay(
-            Rectangle()
-                .fill(Theme.Colors.border)
-                .frame(height: 1),
-            alignment: .bottom
-        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .help(item.path)
+        .contextMenu {
+            Button("Reveal in Finder", action: reveal)
+            Button("Delete…", role: .destructive, action: onDelete)
+        }
+    }
+
+    private var subtitle: String {
+        item.details ?? item.path.abbreviatingHome
+    }
+
+    private func reveal() {
+        NSWorkspace.shared.selectFile(item.path, inFileViewerRootedAtPath: "")
     }
 }
 
-
-struct SectionHeader: View {
+private struct BuildGroupHeader: View {
     let group: BuildGroup
-    let count: Int
-    let totalSize: Int64
+    let items: [CleanableItem]
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: group.icon)
-                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.Colors.secondaryText)
-
             Text(group.rawValue)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Theme.Colors.primaryText)
-
-            Text("(\(count))")
-                .font(.system(size: 12, weight: .medium))
+                .fontWeight(.semibold)
+            Text("\(items.count)")
                 .foregroundStyle(Theme.Colors.secondaryText)
-
             Spacer()
-
-            Text(ByteCountFormatter.string(fromByteCount: totalSize, countStyle: .file))
-                .font(.system(size: 12, weight: .medium))
+            Text(items.reduce(0) { $0 + $1.size }.formatted(.byteCount(style: .file)))
+                .monospacedDigit()
                 .foregroundStyle(Theme.Colors.secondaryText)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Theme.Colors.hoverBackground.opacity(0.5))
-        .overlay(
-            Rectangle()
-                .fill(Theme.Colors.border)
-                .frame(height: 1),
-            alignment: .bottom
-        )
+        .font(.system(size: 12))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(Theme.Colors.background)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.Colors.border).frame(height: 1)
+        }
     }
 }
 
 #Preview {
-    DetailListView(category: .cache)
+    DetailListView(category: .testClones)
         .environment(SimulatorManager())
-        .frame(width: 600, height: 400)
+        .frame(width: 646, height: 600)
 }

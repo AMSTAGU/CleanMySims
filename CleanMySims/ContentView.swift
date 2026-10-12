@@ -6,79 +6,74 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selection: NavigationItem? = .dashboard
-    @Environment(SimulatorManager.self) private var simulatorManager
+    @Environment(SimulatorManager.self) private var manager
+    @State private var selection: NavigationItem = .overview
+
+    var body: some View {
+        HStack(spacing: 0) {
+            SidebarView(selection: $selection)
+                .frame(width: Theme.Layout.sidebarWidth)
+
+            Rectangle()
+                .fill(Theme.Colors.border)
+                .frame(width: 1)
+
+            Group {
+                switch selection {
+                case .overview:
+                    OverviewView(selection: $selection)
+                case .category(let type):
+                    DetailListView(category: type)
+                        .id(type)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.Colors.background)
+        }
+        .foregroundStyle(Theme.Colors.primaryText)
+        .overlay {
+            if manager.isCleaning {
+                CleaningOverlay(done: manager.cleaningDone, total: manager.cleaningTotal)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: manager.isCleaning)
+        .ignoresSafeArea()
+        .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
+        .task {
+            if manager.lastScanDate == nil && !manager.isScanning {
+                manager.scan()
+            }
+        }
+    }
+}
+
+/// Blocks the window while items are being removed.
+private struct CleaningOverlay: View {
+    let done: Int
+    let total: Int
 
     var body: some View {
         ZStack {
-            HStack(spacing: 0) {
-                SidebarView(selection: $selection)
-                    .frame(width: Theme.Layout.sidebarWidth)
-                    .frame(maxHeight: .infinity)
+            Color.black.opacity(0.15)
+                .contentShape(Rectangle())
+                .onTapGesture {}
 
-                Rectangle()
-                    .fill(Color.black.opacity(0.1)) // Lighter grey as requested
-                    .frame(width: 1)
-                    .ignoresSafeArea()
-
-
-                Group {
-                    switch selection {
-                    case .dashboard, nil:
-                        DashboardView()
-                    case .cache:
-                        DetailListView(category: .cache)
-                    case .devices:
-                        DetailListView(category: .virtualDevice)
-                    case .runtimes:
-                        DetailListView(category: .runtimes)
-                    case .builds:
-                        DetailListView(category: .builds)
-                    case .deviceSupport:
-                        DetailListView(category: .deviceSupport)
-                    case .testClones:
-                        DetailListView(category: .testClones)
-                    case .previews:
-                        DetailListView(category: .previews)
-                    case .archives:
-                        DetailListView(category: .archives)
-                    case .androidEmulators:
-                        DetailListView(category: .androidEmulator)
-                    case .gradleCache:
-                        DetailListView(category: .gradleCache)
-                    case .androidStudioCache:
-                        DetailListView(category: .androidStudioCache)
-                    case .androidSdk:
-                        DetailListView(category: .androidSdk)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 12) {
+                Text("Cleaning…")
+                    .font(Theme.Fonts.headline)
+                ProgressView(value: Double(done), total: Double(max(total, 1)))
+                    .frame(width: 220)
+                    .tint(Theme.Colors.accent)
+                Text("\(done) of \(total)")
+                    .font(.system(size: 12))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.Colors.secondaryText)
             }
-            .background(Color.clear)
-            .containerBackground(.thickMaterial, for: .window)
-            
-            // Global Loading Overlay with interaction blocker
-            if simulatorManager.isScanning {
-                Color.black.opacity(0.01) // Almost invisible, just enough to block clicks? 
-                // Actually user said "assombrit trop", so let's make it very subtle or just clear with contentShape
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle()) // Ensure it catches taps
-                    .onTapGesture { } // Block taps
-                
-                LoadingOverlay(title: "Scanning...", isIndeterminate: true)
-            }
-            
-            if simulatorManager.isCleaning {
-                Color.black.opacity(0.01) // Subtle background to block taps
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle()) // Ensure it catches taps
-                    .onTapGesture { } // Block taps
-                
-                LoadingOverlay(title: "Cleaning...", isIndeterminate: true)
-            }
-
+            .padding(24)
+            .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.15), radius: 20, y: 8)
         }
-        .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
     }
 }
 

@@ -7,41 +7,35 @@ import SwiftUI
 
 @main
 struct CleanMySimsApp: App {
-    @State private var simulatorManager = SimulatorManager()
+    @State private var manager = SimulatorManager()
+    @AppStorage("appearance") private var appearance: AppearanceMode = .system
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environment(simulatorManager)
-                .background(WindowAccessor())
+                .environment(manager)
+                .onAppear { NSApp.appearance = appearance.nsAppearance }
+                .onChange(of: appearance) { _, mode in
+                    NSApp.appearance = mode.nsAppearance
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        .windowBackgroundDragBehavior(.enabled)
         .defaultSize(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
         .commands {
-            // Remove unnecessary menu items
-            CommandGroup(replacing: .newItem) { }
-        }
-    }
-}
-
-struct WindowAccessor: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window {
-                window.titlebarAppearsTransparent = true
-                window.titleVisibility = .hidden
-                // Ensure the style mask supports full size content and standard window features
-                window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-                window.isMovableByWindowBackground = true
-                window.isOpaque = false // Allow transparency for the rounded corners if using materials
-                window.backgroundColor = .clear // Important for containerBackground to show through
-                window.hasShadow = true
+            CommandGroup(replacing: .newItem) {
+                Button("Rescan") { manager.scan() }
+                    .keyboardShortcut("r")
+                    .disabled(manager.isScanning || manager.isCleaning)
+            }
+            CommandGroup(after: .toolbar) {
+                Picker("Appearance", selection: $appearance) {
+                    ForEach(AppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
             }
         }
-        return view
     }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }

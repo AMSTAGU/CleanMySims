@@ -4,94 +4,126 @@
 //
 
 import SwiftUI
+import AppKit
 
-struct Theme {
-    struct Colors {
-        // Base colors
-        static let background = Color(hex: "FAFAFA")
-        static let sidebarBackground = Color(hex: "F5F5F5")
-        static let primaryText = Color(hex: "2D2D2D")
-        static let secondaryText = Color(hex: "6B6B6B")
-        static let border = Color(hex: "E5E5E5")
-        static let hoverBackground = Color(hex: "EEEEEE")
+enum Theme {
+    enum Colors {
+        // Surfaces
+        static let background = Color(light: 0xF7F7F9, dark: 0x1C1C1E)
+        static let sidebar = Color(light: 0xECECEF, dark: 0x232325)
+        static let card = Color(light: 0xFFFFFF, dark: 0x2A2A2D)
+        static let border = Color(light: 0xE1E1E5, dark: 0x3A3A3D)
+        static let selection = Color(light: 0xDCDCE0, dark: 0x3A3A3D)
+        static let hoverBackground = Color(light: 0xE6E6EA, dark: 0x313134)
+        static let track = Color(light: 0xE3E3E8, dark: 0x2E2E31)
 
-        // Category accent colors (Vibrant/Neon for "Superwhisper" feel)
-        static let cache = Color(hex: "007AFF")        // Vivid Blue
-        static let simulator = Color(hex: "FF2D55")    // Vibrant Pink/Red
-        static let runtime = Color(hex: "00C853")      // Vivid Green
-        static let build = Color(hex: "FF9500")        // Vivid Orange
-        static let deviceSupport = Color(hex: "5856D6") // Vivid Purple
-        static let testClones = Color(hex: "00A3BF")   // Teal
-        static let previews = Color(hex: "BF5AF2")     // Orchid
-        static let archives = Color(hex: "A2845E")     // Brown
-        // Android
-        static let androidEmulator = Color(hex: "3DDC84") // Android brand green
-        static let gradleCache = Color(hex: "00B0FF")     // Light blue
-        static let androidStudioCache = Color(hex: "F57C00") // Deep orange
-        static let androidSdk = Color(hex: "9C27B0")      // Purple
+        // Text
+        static let primaryText = Color(light: 0x1D1D1F, dark: 0xF5F5F7)
+        static let secondaryText = Color(light: 0x636366, dark: 0xA1A1A6)
 
-        // Semantic colors
-        static let danger = Color(hex: "E88B8B")       // Soft coral
-        static let success = Color(hex: "A8D5BA")      // Sage green
+        // Semantic
+        static let accent = Color(light: 0x0A64D6, dark: 0x0A84FF)
+        static let safe = Color(light: 0x248A3D, dark: 0x32D74B)
+        static let safeBackground = Color(light: 0x34C759, dark: 0x32D74B).opacity(0.15)
+        static let danger = Color(light: 0xD70015, dark: 0xFF453A)
+        static let success = safe
 
-        // Helper to get color by type
+        /// Category accent: fills the icon squares, same in both appearances.
         static func color(for type: CleanableItemType) -> Color {
+            Color(nsColor: nsColor(for: type))
+        }
+
+        /// Pastel version of the category color, used behind treemap tiles.
+        static func tileBackground(for type: CleanableItemType) -> Color {
+            let base = nsColor(for: type)
+            return Color(nsColor: NSColor(name: nil) { appearance in
+                appearance.isDark
+                    ? base.blended(withFraction: 0.72, of: NSColor(hex: 0x1C1C1E)) ?? base
+                    : base.blended(withFraction: 0.82, of: .white) ?? base
+            })
+        }
+
+        private static func nsColor(for type: CleanableItemType) -> NSColor {
             switch type {
-            case .cache: return cache
-            case .virtualDevice: return simulator
-            case .runtimes: return runtime
-            case .builds: return build
-            case .deviceSupport: return deviceSupport
-            case .testClones: return testClones
-            case .previews: return previews
-            case .archives: return archives
-            case .androidEmulator: return androidEmulator
-            case .gradleCache: return gradleCache
-            case .androidStudioCache: return androidStudioCache
-            case .androidSdk: return androidSdk
+            case .testClones: return NSColor(hex: 0x0FA3B1)
+            case .runtimes: return NSColor(hex: 0x34A853)
+            case .builds: return NSColor(hex: 0xF28C00)
+            case .deviceSupport: return NSColor(hex: 0x5E5CE6)
+            case .previews: return NSColor(hex: 0xAF52DE)
+            case .cache: return NSColor(hex: 0x0A84FF)
+            case .archives: return NSColor(hex: 0xA2845E)
+            case .virtualDevice: return NSColor(hex: 0xFF375F)
+            case .androidSdk: return NSColor(hex: 0x2E9E5B)
+            case .androidEmulator: return NSColor(hex: 0x3DDC84)
+            case .gradleCache: return NSColor(hex: 0x02A9D9)
+            case .androidStudioCache: return NSColor(hex: 0xE8710A)
             }
         }
     }
 
-    struct Fonts {
-        static let title = Font.system(size: 32, weight: .bold)
-        static let headline = Font.system(size: 16, weight: .medium)
-        static let subheadline = Font.system(size: 15, weight: .medium)
-        static let body = Font.system(size: 13, weight: .regular)
-        static let caption = Font.system(size: 11, weight: .regular)
-        static let mono = Font.system(size: 11, weight: .regular, design: .monospaced)
+    enum Fonts {
+        static let body = Font.system(size: 13)
+        static let caption = Font.system(size: 11)
+        static let headline = Font.system(size: 15, weight: .semibold)
     }
 
-    struct Layout {
+    enum Layout {
         static let windowWidth: CGFloat = 860
         static let windowHeight: CGFloat = 600
-        static let sidebarWidth: CGFloat = 200
-        static let cardCornerRadius: CGFloat = 12
-        static let buttonCornerRadius: CGFloat = 8
-        static let padding: CGFloat = 16
+        static let sidebarWidth: CGFloat = 228
+    }
+}
+
+/// App appearance, overriding the system one if the user picks Light or Dark.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+extension Locale {
+    /// The UI is English-only: format dates and lists in the app's language so sentences don't mix languages.
+    static let app = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+}
+
+extension NSAppearance {
+    var isDark: Bool {
+        bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+}
+
+extension NSColor {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(
+            srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: alpha
+        )
     }
 }
 
 extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            opacity: Double(a) / 255
-        )
+    /// A color that follows the window's appearance.
+    init(light: UInt32, dark: UInt32) {
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            NSColor(hex: appearance.isDark ? dark : light)
+        })
     }
 }
