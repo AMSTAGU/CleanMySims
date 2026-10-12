@@ -19,6 +19,8 @@ struct GradientIcon: View {
     let systemName: String
     let color: Color
     var size: CGFloat = 24
+    /// Glyph size relative to the square. Some symbols fill their box more than others.
+    var glyphScale: CGFloat = 0.5
 
     var body: some View {
         RoundedRectangle(cornerRadius: size / 3, style: .continuous)
@@ -27,7 +29,7 @@ struct GradientIcon: View {
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: systemName)
-                    .font(.system(size: size / 2, weight: .semibold))
+                    .font(.system(size: size * glyphScale, weight: .semibold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.2), radius: 1, x: 0, y: 1)
             }
