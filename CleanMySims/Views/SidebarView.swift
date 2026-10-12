@@ -33,7 +33,7 @@ struct SidebarView: View {
                 Text(platform.rawValue)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.Colors.secondaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 4)
                     .padding(.top, 14)
                     .padding(.bottom, 3)
 
@@ -133,7 +133,8 @@ private struct SidebarRow<Icon: View, Label: View, Trailing: View>: View {
                 Spacer(minLength: 4)
                 trailing
             }
-            .padding(.horizontal, 8)
+            .padding(.leading, 4)
+            .padding(.trailing, 8)
             .padding(.vertical, 3)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
