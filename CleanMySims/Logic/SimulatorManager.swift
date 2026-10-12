@@ -36,7 +36,16 @@ class SimulatorManager: ObservableObject {
     private let runtimesPath = "/Library/Developer/CoreSimulator/Volumes"
     private let derivedDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/DerivedData"
     private let cachePath = "/Library/Developer/CoreSimulator/Caches"
-    private let deviceSupportPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/iOS DeviceSupport"
+    private let xcodePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode"
+    private let deviceSupportPlatforms = ["iOS", "watchOS", "tvOS", "visionOS", "macOS"]
+    // Clones created by Xcode for parallel testing
+    private let testClonesPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/XCTestDevices"
+    // Simulators used by SwiftUI previews (location changed across Xcode versions)
+    private let previewDeviceSetPaths = [
+        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/UserData/Previews/Simulator Devices",
+        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/UserData/IB Support/Simulator Devices"
+    ]
+    private let archivesPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/Archives"
     // Android Paths
     private let androidAvdPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.android/avd"
     private let gradleCachePath = FileManager.default.homeDirectoryForCurrentUser.path + "/.gradle/caches"
@@ -96,8 +105,12 @@ class SimulatorManager: ObservableObject {
             // 1. Scan Caches
             newItems.append(contentsOf: self.scanDirectory(at: self.cachePath, type: .cache))
             
-            // 2. Scan Device Support
-            newItems.append(contentsOf: self.scanDirectory(at: self.deviceSupportPath, type: .deviceSupport))
+            // 2. Scan Device Support (iOS, watchOS, tvOS, visionOS, macOS)
+            for platform in self.deviceSupportPlatforms {
+                let path = self.xcodePath + "/\(platform) DeviceSupport"
+                guard self.fileManager.fileExists(atPath: path) else { continue }
+                newItems.append(contentsOf: self.scanDirectory(at: path, type: .deviceSupport, details: platform))
+            }
             
             // 3. Scan Virtual Devices (simctl)
             newItems.append(contentsOf: self.scanVirtualDevices())
@@ -107,6 +120,17 @@ class SimulatorManager: ObservableObject {
             
             // 5. Scan Derived Data (Builds)
             newItems.append(contentsOf: self.scanDirectory(at: self.derivedDataPath, type: .builds))
+
+            // 5b. Scan test clones (XCTestDevices)
+            newItems.append(contentsOf: self.scanDeviceSet(at: self.testClonesPath, type: .testClones))
+
+            // 5c. Scan SwiftUI preview simulators
+            for path in self.previewDeviceSetPaths {
+                newItems.append(contentsOf: self.scanDeviceSet(at: path, type: .previews))
+            }
+
+            // 5d. Scan Archives
+            newItems.append(contentsOf: self.scanArchives())
 
             // 6. Scan Android Emulators
             newItems.append(contentsOf: self.scanAndroidEmulators())
@@ -147,7 +171,7 @@ class SimulatorManager: ObservableObject {
     
     // MARK: - Scanning Logic
     
-    private func scanDirectory(at path: String, type: CleanableItemType) -> [CleanableItem] {
+    private func scanDirectory(at path: String, type: CleanableItemType, details: String? = nil) -> [CleanableItem] {
         var results: [CleanableItem] = []
         let url = URL(fileURLWithPath: path)
         
@@ -194,7 +218,7 @@ class SimulatorManager: ObservableObject {
                     size: size,
                     type: type,
                     isDirectory: (try? itemUrl.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false,
-                    details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : (type == .builds && finalName != name) ? name : nil, 
+                    details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : (type == .builds && finalName != name) ? name : details,
                     appIconPath: iconPath,
                     buildGroup: group
                 ))
@@ -205,40 +229,40 @@ class SimulatorManager: ObservableObject {
     }
     
     private func scanVirtualDevices() -> [CleanableItem] {
-        // Use simctl to list devices
-        // logic: xcrun simctl list devices -j
-        
-        // For simplicity and matching user request "unavailable" or specific pattern, 
-        // we might initially just look at the directories in ~/Library/Developer/CoreSimulator/Devices
-        // But better is to trust simctl.
-        
-        // Let's implement a safe approach: Check the physical folder size, map to simctl list if possible.
-        // User said: xcrun simctl list devices | grep -v ... | xargs delete
-        
-        // We will list the FOLDERs in Devices dir, and maybe try to parse their status.
         let devicesPath = fileManager.homeDirectoryForCurrentUser.path + "/Library/Developer/CoreSimulator/Devices"
-        let url = URL(fileURLWithPath: devicesPath)
-        
+        return scanDeviceSet(at: devicesPath, type: .virtualDevice)
+    }
+
+    /// Lists the devices of a simctl device set (one folder per device UDID, each with a device.plist).
+    private func scanDeviceSet(at setPath: String, type: CleanableItemType) -> [CleanableItem] {
+        let url = URL(fileURLWithPath: setPath)
+
         var results: [CleanableItem] = []
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return [] }
-        
+        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+
         for folder in contents {
+            // Skip device_set.plist and other loose files
+            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+
             let size = getDirectorySize(url: folder)
             let infos = getDeviceInfos(url: folder)
-            
+            // Leftover empty folders aren't worth listing
+            guard size > 0 || infos != nil else { continue }
+
             // If we have infos, use them. Otherwise default fallback.
             let name = infos?.name ?? "Device " + folder.lastPathComponent.prefix(8)
-            let details = infos?.runtime
-            
-            // Only add if size > 0 or if scanning logic allows empty folders
-            // For devices, folder usually exists.
-            
+            var details = infos?.runtime
+            if type != .virtualDevice {
+                // Xcode gives every clone the same name: add the UDID prefix to tell them apart
+                details = [details, String(folder.lastPathComponent.prefix(8))].compactMap { $0 }.joined(separator: " · ")
+            }
+
             results.append(CleanableItem(
                 id: folder.lastPathComponent,
                 name: name,
                 path: folder.path,
                 size: size,
-                type: .virtualDevice,
+                type: type,
                 isDirectory: true,
                 details: details,
                 appIconPath: nil,
@@ -247,6 +271,68 @@ class SimulatorManager: ObservableObject {
         }
         return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
+
+    /// Lists .xcarchive bundles (Archives/<date>/<name>.xcarchive).
+    private func scanArchives() -> [CleanableItem] {
+        let url = URL(fileURLWithPath: archivesPath)
+        guard let days = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return [] }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+
+        var results: [CleanableItem] = []
+        for day in days {
+            guard let archives = try? fileManager.contentsOfDirectory(at: day, includingPropertiesForKeys: nil) else { continue }
+
+            for archive in archives where archive.pathExtension == "xcarchive" {
+                let size = getDirectorySize(url: archive)
+                guard size > 0 else { continue }
+
+                var name = archive.deletingPathExtension().lastPathComponent
+                var detailParts: [String] = []
+                var iconPath: String? = nil
+
+                if let data = try? Data(contentsOf: archive.appendingPathComponent("Info.plist")),
+                   let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+                    if let archiveName = plist["Name"] as? String {
+                        name = archiveName
+                    }
+                    if let app = plist["ApplicationProperties"] as? [String: Any] {
+                        if let version = app["CFBundleShortVersionString"] as? String {
+                            let build = (app["CFBundleVersion"] as? String).map { " (\($0))" } ?? ""
+                            detailParts.append("v\(version)\(build)")
+                        }
+                        if let appPath = app["ApplicationPath"] as? String {
+                            let appUrl = archive.appendingPathComponent("Products").appendingPathComponent(appPath)
+                            iconPath = findIconFile(in: appUrl)
+                            if let path = iconPath {
+                                IconThumbnailCache.shared.preloadThumbnail(forKey: path, fromPath: path)
+                            }
+                        }
+                    }
+                    if let date = plist["CreationDate"] as? Date {
+                        detailParts.append(dateFormatter.string(from: date))
+                    }
+                }
+
+                results.append(CleanableItem(
+                    id: archive.path,
+                    name: name,
+                    path: archive.path,
+                    size: size,
+                    type: .archives,
+                    isDirectory: true,
+                    details: detailParts.isEmpty ? nil : detailParts.joined(separator: " · "),
+                    appIconPath: iconPath,
+                    buildGroup: nil
+                ))
+            }
+        }
+
+        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
     private func getDeviceInfos(url: URL) -> (name: String, runtime: String)? {
         let plistUrl = url.appendingPathComponent("device.plist")
         guard let plistData = try? Data(contentsOf: plistUrl),
@@ -646,19 +732,47 @@ class SimulatorManager: ObservableObject {
 
     // MARK: - Cleaning Logic
     
-    func delete(item: CleanableItem) {
-        if item.type == .virtualDevice {
-            // Use simctl
-            Shell.run("xcrun simctl delete \(item.id)")
-        } else {
-            // Move to trash
-            do {
-                try fileManager.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
-            } catch {
-                print("Error trashing item: \(error)")
+    /// Removes an item from disk. Simulators and runtimes go through simctl so CoreSimulator
+    /// stays consistent; everything else is moved to the trash. Blocking.
+    nonisolated private static func remove(_ item: CleanableItem) {
+        switch item.type {
+        case .virtualDevice, .testClones, .previews:
+            // Each device belongs to a device set (its parent folder)
+            let setPath = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
+            Shell.run("/usr/bin/xcrun", arguments: ["simctl", "--set", setPath, "delete", item.id])
+        case .runtimes:
+            // Runtime volumes are mounted disk images owned by root: only simctl can remove them
+            if let identifier = runtimeIdentifier(mountPath: item.path) {
+                Shell.run("/usr/bin/xcrun", arguments: ["simctl", "runtime", "delete", identifier])
+                return
             }
+        default:
+            break
         }
-        
+
+        // Move to trash (also a fallback if simctl left the folder behind)
+        guard FileManager.default.fileExists(atPath: item.path) else { return }
+        do {
+            try FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
+        } catch {
+            print("Error trashing item: \(error)")
+        }
+    }
+
+    /// Finds the simctl runtime identifier for a mounted runtime volume.
+    nonisolated private static func runtimeIdentifier(mountPath: String) -> String? {
+        let result = Shell.run("/usr/bin/xcrun", arguments: ["simctl", "runtime", "list", "-j"])
+        guard result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let images = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else {
+            return nil
+        }
+        return images.values.first { ($0["mountPath"] as? String) == mountPath }?["identifier"] as? String
+    }
+
+    func delete(item: CleanableItem) {
+        Self.remove(item)
+
         // Remove from list
         DispatchQueue.main.async {
             self.items.removeAll { $0.id == item.id }
@@ -703,14 +817,8 @@ class SimulatorManager: ObservableObject {
             defer { isCleaning = false }
 
             for item in items {
-                // Ensure we interact with fileManager on a background thread if needed, or safely here
-                // removeItem can throw, so we handle it
                 await Task.detached(priority: .background) {
-                    do {
-                        try FileManager.default.removeItem(atPath: item.path)
-                    } catch {
-                        print("Failed to delete \(item.path): \(error)")
-                    }
+                    Self.remove(item)
                 }.value
             }
 

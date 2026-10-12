@@ -21,6 +21,9 @@ struct Theme {
         static let runtime = Color(hex: "00C853")      // Vivid Green
         static let build = Color(hex: "FF9500")        // Vivid Orange
         static let deviceSupport = Color(hex: "5856D6") // Vivid Purple
+        static let testClones = Color(hex: "00A3BF")   // Teal
+        static let previews = Color(hex: "BF5AF2")     // Orchid
+        static let archives = Color(hex: "A2845E")     // Brown
         // Android
         static let androidEmulator = Color(hex: "3DDC84") // Android brand green
         static let gradleCache = Color(hex: "00B0FF")     // Light blue
@@ -39,6 +42,9 @@ struct Theme {
             case .runtimes: return runtime
             case .builds: return build
             case .deviceSupport: return deviceSupport
+            case .testClones: return testClones
+            case .previews: return previews
+            case .archives: return archives
             case .androidEmulator: return androidEmulator
             case .gradleCache: return gradleCache
             case .androidStudioCache: return androidStudioCache

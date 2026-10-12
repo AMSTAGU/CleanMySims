@@ -40,7 +40,7 @@ If you're an iOS/macOS developer, you know how quickly Xcode can consume disk sp
 
 ### Smart Scanning
 
-Scans 5 categories of Xcode-related files simultaneously:
+Scans 8 categories of Xcode-related files simultaneously:
 
 | Category           | Description                                                                               |
 | ------------------ | ----------------------------------------------------------------------------------------- |
@@ -48,7 +48,10 @@ Scans 5 categories of Xcode-related files simultaneously:
 | **Caches**         | Temporary simulator data: logs, compilation caches, downloaded data                       |
 | **Simulators**     | Virtual iOS devices used by Xcode to test apps                                            |
 | **Runtimes**       | iOS versions installed to run the simulators                                              |
-| **Device Support** | Support files to connect physical iPhone/iPad to Xcode                                    |
+| **Device Support** | Support files to connect physical devices (iOS, watchOS, tvOS, visionOS) to Xcode         |
+| **Test Clones**    | Simulator clones created by Xcode for parallel testing (`XCTestDevices`)                  |
+| **Previews**       | Simulators used by SwiftUI previews                                                       |
+| **Archives**       | `.xcarchive` bundles from Product > Archive (they hold the dSYMs for crash reports)       |
 
 ### Detailed Category Views
 
@@ -62,7 +65,8 @@ Scans 5 categories of Xcode-related files simultaneously:
 
 - **Confirmation dialogs** before any deletion
 - **Items moved to trash** (not permanently deleted) for most categories
-- **Simulators properly deleted** via `xcrun simctl delete` to avoid corruption
+- **Simulators, test clones and previews properly deleted** via `xcrun simctl delete` to avoid corruption
+- **Runtimes removed** via `xcrun simctl runtime delete`
 - **Non-destructive by default** - you choose what to delete
 
 ### Beautiful Native UI
@@ -95,7 +99,7 @@ Download the latest release from the [Releases](https://github.com/amstagu/Clean
 4. Click on any **category card** to see detailed items
 5. **Select items** you want to delete or use "Select All"
 6. Click **Delete Selected** and confirm
-7. Items are moved to trash (except simulators which are deleted via simctl)
+7. Items are moved to trash (except simulators and runtimes, which are deleted via simctl)
 
 ### Keyboard Shortcuts
 

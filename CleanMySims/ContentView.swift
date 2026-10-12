@@ -36,6 +36,12 @@ struct ContentView: View {
                         DetailListView(category: .builds)
                     case .deviceSupport:
                         DetailListView(category: .deviceSupport)
+                    case .testClones:
+                        DetailListView(category: .testClones)
+                    case .previews:
+                        DetailListView(category: .previews)
+                    case .archives:
+                        DetailListView(category: .archives)
                     case .androidEmulators:
                         DetailListView(category: .androidEmulator)
                     case .gradleCache:
