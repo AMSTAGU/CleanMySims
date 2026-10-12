@@ -7,7 +7,7 @@ import ImageIO
 /// Uses `NSCache` under the hood which is inherently thread-safe (no locks needed).
 /// All thumbnail creation uses `CGImageSource` (Core Graphics) — fully thread-safe,
 /// no AppKit/NSWorkspace calls from any thread.
-final class IconThumbnailCache {
+nonisolated final class IconThumbnailCache: @unchecked Sendable {
 
     static let shared = IconThumbnailCache()
 

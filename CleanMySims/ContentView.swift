@@ -7,7 +7,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selection: NavigationItem? = .dashboard
-    @EnvironmentObject var simulatorManager: SimulatorManager
+    @Environment(SimulatorManager.self) private var simulatorManager
 
     var body: some View {
         ZStack {
@@ -77,30 +77,6 @@ struct ContentView: View {
                 LoadingOverlay(title: "Cleaning...", isIndeterminate: true)
             }
 
-            // Global Confirmation Modal
-            if simulatorManager.showingConfirmation {
-                Color.black.opacity(0.4) // Darker background for modal focus
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        simulatorManager.cancelAction()
-                    }
-                
-                ConfirmDialog(
-                    title: simulatorManager.confirmationTitle,
-                    message: simulatorManager.confirmationMessage,
-                    detail: simulatorManager.confirmationDetail,
-                    confirmTitle: simulatorManager.confirmationActionTitle,
-                    isDangerous: simulatorManager.isConfirmationDangerous,
-                    onConfirm: {
-                        simulatorManager.confirmAction()
-                    },
-                    onCancel: {
-                        simulatorManager.cancelAction()
-                    }
-                )
-                .transition(.scale(scale: 0.9).combined(with: .opacity))
-            }
         }
         .frame(width: Theme.Layout.windowWidth, height: Theme.Layout.windowHeight)
     }
@@ -108,5 +84,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .environmentObject(SimulatorManager())
+        .environment(SimulatorManager())
 }

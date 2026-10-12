@@ -7,7 +7,7 @@ import SwiftUI
 
 struct DetailListView: View {
     let category: CleanableItemType
-    @EnvironmentObject var simulatorManager: SimulatorManager
+    @Environment(SimulatorManager.self) private var simulatorManager
     @State private var sortOrder: SortOrder = .defaultOrder
     @State private var showDeleteConfirm = false
     @State private var itemToDelete: CleanableItem?
@@ -207,7 +207,7 @@ struct DetailListView: View {
                         confirmTitle: "Delete",
                         isDangerous: true,
                         onConfirm: {
-                            simulatorManager.delete(item: item)
+                            simulatorManager.delete(item)
                             showDeleteConfirm = false
                             itemToDelete = nil
                         },
@@ -231,7 +231,7 @@ struct DetailListView: View {
                         confirmTitle: "Clean",
                         isDangerous: true,
                         onConfirm: {
-                            simulatorManager.cleanItems(items)
+                            simulatorManager.clean(items)
                             showCleanAllConfirm = false
                         },
                         onCancel: {
@@ -365,6 +365,6 @@ struct SectionHeader: View {
 
 #Preview {
     DetailListView(category: .cache)
-        .environmentObject(SimulatorManager())
+        .environment(SimulatorManager())
         .frame(width: 600, height: 400)
 }

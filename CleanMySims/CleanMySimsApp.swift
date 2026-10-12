@@ -7,12 +7,12 @@ import SwiftUI
 
 @main
 struct CleanMySimsApp: App {
-    @StateObject private var simulatorManager = SimulatorManager()
+    @State private var simulatorManager = SimulatorManager()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(simulatorManager)
+                .environment(simulatorManager)
                 .background(WindowAccessor())
         }
         .windowStyle(.hiddenTitleBar)

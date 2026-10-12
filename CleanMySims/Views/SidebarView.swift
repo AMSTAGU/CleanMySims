@@ -100,7 +100,7 @@ enum NavigationItem: Hashable, Identifiable, CaseIterable {
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
     @State private var hoveredItem: NavigationItem?
-    @EnvironmentObject var simulatorManager: SimulatorManager
+    @Environment(SimulatorManager.self) private var simulatorManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

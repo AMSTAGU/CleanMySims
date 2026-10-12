@@ -6,880 +6,180 @@
 //
 
 import Foundation
-import Combine
-import SwiftUI // Required for withAnimation
+import Observation
 
-class SimulatorManager: ObservableObject {
-    @Published var items: [CleanableItem] = []
-    @Published var isScanning = false
-    @Published var isCleaning = false
-    @Published var totalSize: Int64 = 0
-    @Published var categoryStats: [CleanableItemType: CategoryStats] = [:]
-    
-    struct CategoryStats {
+@Observable
+final class SimulatorManager {
+    struct CategoryStats: Equatable {
         var count: Int
         var size: Int64
     }
-    
-    // Global Confirmation State
-    @Published var showingConfirmation = false
-    @Published var confirmationTitle = ""
-    @Published var confirmationMessage = ""
-    @Published var confirmationDetail: String? = nil
-    @Published var confirmationActionTitle = "Confirm"
-    @Published var isConfirmationDangerous = false
-    private var pendingConfirmationAction: (() -> Void)?
-    
-    private let fileManager = FileManager.default
-    
-    // iOS / Xcode Paths
-    private let runtimesPath = "/Library/Developer/CoreSimulator/Volumes"
-    private let derivedDataPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/DerivedData"
-    private let cachePath = "/Library/Developer/CoreSimulator/Caches"
-    private let xcodePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode"
-    private let deviceSupportPlatforms = ["iOS", "watchOS", "tvOS", "visionOS", "macOS"]
-    // Clones created by Xcode for parallel testing
-    private let testClonesPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/XCTestDevices"
-    // Simulators used by SwiftUI previews (location changed across Xcode versions)
-    private let previewDeviceSetPaths = [
-        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/UserData/Previews/Simulator Devices",
-        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/UserData/IB Support/Simulator Devices"
-    ]
-    private let archivesPath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Developer/Xcode/Archives"
-    // Android Paths
-    private let androidAvdPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.android/avd"
-    private let gradleCachePath = FileManager.default.homeDirectoryForCurrentUser.path + "/.gradle/caches"
-    private let gradleDistsPath = FileManager.default.homeDirectoryForCurrentUser.path + "/.gradle/wrapper/dists"
-    private let androidStudioCachePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Caches/Google"
-    private let androidSdkBasePath = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Android/sdk"
-    
-    // Structs for parsing simctl output
-    struct SimctlRuntimeList: Decodable {
-        let runtimes: [SimctlRuntime]
+
+    enum CategoryState {
+        case pending, scanning, done
     }
-    
-    struct SimctlRuntime: Decodable {
-        let name: String
-        let bundlePath: String?
+
+    /// Live state of the running scan.
+    struct ScanProgress {
+        var found: [CleanableItemType: Int64] = [:]
+        var scanning: Set<CleanableItemType> = []
+        var done: Set<CleanableItemType> = []
+        var currentPath = ""
+        var startedAt = Date()
+
+        var totalFound: Int64 { found.values.reduce(0, +) }
+        var fractionDone: Double { Double(done.count) / Double(CleanableItemType.allCases.count) }
     }
-    
-    private func fetchRuntimesMap() -> [String: String] {
-        // Run simctl list runtimes -j
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["simctl", "list", "runtimes", "-j"]
-        process.standardOutput = pipe
-        
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let list = try JSONDecoder().decode(SimctlRuntimeList.self, from: data)
-            
-            var map: [String: String] = [:]
-            for runtime in list.runtimes {
-                if let path = runtime.bundlePath {
-                    // path looks like: /Library/.../iOS_23C54/...
-                    if let volumeName = path.components(separatedBy: "/Volumes/").last?.components(separatedBy: "/").first {
-                        map[volumeName] = runtime.name
-                    }
-                }
-            }
-            return map
-        } catch {
-            print("Error fetching runtimes: \(error)")
-            return [:]
-        }
+
+    private(set) var items: [CleanableItem] = []
+    private(set) var categoryStats: [CleanableItemType: CategoryStats] = [:]
+    private(set) var isScanning = false
+    private(set) var progress = ScanProgress()
+    private(set) var lastScanDate: Date?
+    private(set) var freeSpace: Int64?
+
+    private(set) var isCleaning = false
+    private(set) var cleaningDone = 0
+    private(set) var cleaningTotal = 0
+
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+
+    var totalSize: Int64 {
+        categoryStats.values.reduce(0) { $0 + $1.size }
     }
-    
+
+    var safeItems: [CleanableItem] {
+        items.filter { $0.type.isSafeToDelete }
+    }
+
+    var safeSize: Int64 {
+        categoryStats.filter { $0.key.isSafeToDelete }.values.reduce(0) { $0 + $1.size }
+    }
+
+    /// Size to show for a category: the final total once it is scanned, the running count before that.
+    func size(of type: CleanableItemType) -> Int64 {
+        categoryStats[type]?.size ?? progress.found[type] ?? 0
+    }
+
+    func state(of type: CleanableItemType) -> CategoryState {
+        if progress.done.contains(type) || (!isScanning && categoryStats[type] != nil) { return .done }
+        if progress.scanning.contains(type) { return .scanning }
+        return isScanning ? .pending : .done
+    }
+
+    func items(of type: CleanableItemType) -> [CleanableItem] {
+        items.filter { $0.type == type }
+    }
+
+    // MARK: - Scanning
+
+    /// Scans every category in parallel and streams progress to the UI.
     func scan() {
-        isScanning = true
+        scanTask?.cancel()
+
         items = []
-        totalSize = 0
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-            
-            var newItems: [CleanableItem] = []
-            
-            // 1. Scan Caches
-            newItems.append(contentsOf: self.scanDirectory(at: self.cachePath, type: .cache))
-            
-            // 2. Scan Device Support (iOS, watchOS, tvOS, visionOS, macOS)
-            for platform in self.deviceSupportPlatforms {
-                let path = self.xcodePath + "/\(platform) DeviceSupport"
-                guard self.fileManager.fileExists(atPath: path) else { continue }
-                newItems.append(contentsOf: self.scanDirectory(at: path, type: .deviceSupport, details: platform))
+        categoryStats = [:]
+        progress = ScanProgress()
+        isScanning = true
+
+        let (events, continuation) = AsyncStream.makeStream(of: ScanEvent.self)
+        let worker = Task.detached(priority: .userInitiated) {
+            await withTaskGroup(of: Void.self) { group in
+                for type in CleanableItemType.allCases {
+                    group.addTask {
+                        continuation.yield(.started(type))
+                        let items = DiskScanner(report: { continuation.yield($0) }).scan(type)
+                        // System icons are drawn in the lists: load them now, off the main thread
+                        for item in items where item.appIconPath == nil {
+                            IconThumbnailCache.shared.preloadSystemIcon(forPath: item.path)
+                        }
+                        continuation.yield(.finished(type, items))
+                    }
+                }
             }
-            
-            // 3. Scan Virtual Devices (simctl)
-            newItems.append(contentsOf: self.scanVirtualDevices())
-            
-            // 4. Scan runtimes (Volumes)
-            newItems.append(contentsOf: self.scanDirectory(at: self.runtimesPath, type: .runtimes))
-            
-            // 5. Scan Derived Data (Builds)
-            newItems.append(contentsOf: self.scanDirectory(at: self.derivedDataPath, type: .builds))
+            continuation.finish()
+        }
 
-            // 5b. Scan test clones (XCTestDevices)
-            newItems.append(contentsOf: self.scanDeviceSet(at: self.testClonesPath, type: .testClones))
-
-            // 5c. Scan SwiftUI preview simulators
-            for path in self.previewDeviceSetPaths {
-                newItems.append(contentsOf: self.scanDeviceSet(at: path, type: .previews))
+        scanTask = Task { [weak self] in
+            await withTaskCancellationHandler {
+                for await event in events {
+                    self?.apply(event)
+                }
+            } onCancel: {
+                worker.cancel()
             }
+            self?.finishScan()
+        }
+    }
 
-            // 5d. Scan Archives
-            newItems.append(contentsOf: self.scanArchives())
+    func stopScan() {
+        scanTask?.cancel()
+    }
 
-            // 6. Scan Android Emulators
-            newItems.append(contentsOf: self.scanAndroidEmulators())
-
-            // 7. Scan Gradle Caches
-            newItems.append(contentsOf: self.scanGradleCaches())
-
-            // 8. Scan Android Studio Caches
-            newItems.append(contentsOf: self.scanAndroidStudioCaches())
-
-            // 9. Scan Android SDK (platforms, build-tools, system-images)
-            newItems.append(contentsOf: self.scanAndroidSdk())
-            
+    private func apply(_ event: ScanEvent) {
+        switch event {
+        case .started(let type):
+            progress.scanning.insert(type)
+        case .measured(let type, let bytes, let path):
+            progress.found[type, default: 0] += bytes
+            progress.currentPath = path
+        case .finished(let type, let newItems):
+            progress.scanning.remove(type)
+            progress.done.insert(type)
             let size = newItems.reduce(0) { $0 + $1.size }
-            
-            // Pre-load system icons for ALL items (we're on a background thread)
-            for item in newItems {
-                IconThumbnailCache.shared.preloadSystemIcon(forPath: item.path)
-            }
-            
-            // Calculate stats efficiently
-            var stats: [CleanableItemType: CategoryStats] = [:]
-            for item in newItems {
-                var current = stats[item.type] ?? CategoryStats(count: 0, size: 0)
-                current.count += 1
-                current.size += item.size
-                stats[item.type] = current
-            }
-            
-            DispatchQueue.main.async {
-                self.items = newItems
-                self.categoryStats = stats
-                self.totalSize = size
-                self.isScanning = false
+            progress.found[type] = size
+            if !newItems.isEmpty {
+                items.append(contentsOf: newItems)
+                categoryStats[type] = CategoryStats(count: newItems.count, size: size)
             }
         }
     }
-    
-    // MARK: - Scanning Logic
-    
-    private func scanDirectory(at path: String, type: CleanableItemType, details: String? = nil) -> [CleanableItem] {
-        var results: [CleanableItem] = []
-        let url = URL(fileURLWithPath: path)
-        
-        // If scanning runtimes, fetch the map
-        let runtimesMap: [String: String] = (type == .runtimes) ? fetchRuntimesMap() : [:]
-        
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey]) else {
-            print("Error accessing directory at \(path). Check permissions.")
-            return []
-        }
-        
-        for itemUrl in contents {
-            var name = itemUrl.lastPathComponent
-            let size = getDirectorySize(url: itemUrl)
-            
-            // For runtimes, try to get friendly name
-            if type == .runtimes, let friendlyName = runtimesMap[name] {
-                name = friendlyName
-            }
-            
-            // Filter out small files if necessary, or keep everything
-            if size > 0 {
-                
-                var finalName = name
-                var iconPath: String? = nil
-                
-                if type == .builds {
-                    if let details = findAppDetails(in: itemUrl) {
-                        finalName = details.name
-                        iconPath = details.iconPath
-                        // Pre-load thumbnail during scan (background thread — CGImageSource is thread-safe)
-                        if let path = iconPath {
-                            IconThumbnailCache.shared.preloadThumbnail(forKey: path, fromPath: path)
-                        }
-                    }
-                }
-                
-                let group: BuildGroup? = (type == .builds) ? BuildGroup.classify(folderName: itemUrl.lastPathComponent) : nil
-                
-                results.append(CleanableItem(
-                    id: itemUrl.path,
-                    name: finalName,
-                    path: itemUrl.path,
-                    size: size,
-                    type: type,
-                    isDirectory: (try? itemUrl.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false,
-                    details: (type == .runtimes && name != itemUrl.lastPathComponent) ? itemUrl.lastPathComponent : (type == .builds && finalName != name) ? name : details,
-                    appIconPath: iconPath,
-                    buildGroup: group
-                ))
-            }
-        }
-        
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-    
-    private func scanVirtualDevices() -> [CleanableItem] {
-        let devicesPath = fileManager.homeDirectoryForCurrentUser.path + "/Library/Developer/CoreSimulator/Devices"
-        return scanDeviceSet(at: devicesPath, type: .virtualDevice)
+
+    private func finishScan() {
+        isScanning = false
+        progress.scanning = []
+        lastScanDate = Date()
+        refreshFreeSpace()
     }
 
-    /// Lists the devices of a simctl device set (one folder per device UDID, each with a device.plist).
-    private func scanDeviceSet(at setPath: String, type: CleanableItemType) -> [CleanableItem] {
-        let url = URL(fileURLWithPath: setPath)
-
-        var results: [CleanableItem] = []
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
-
-        for folder in contents {
-            // Skip device_set.plist and other loose files
-            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-
-            let size = getDirectorySize(url: folder)
-            let infos = getDeviceInfos(url: folder)
-            // Leftover empty folders aren't worth listing
-            guard size > 0 || infos != nil else { continue }
-
-            // If we have infos, use them. Otherwise default fallback.
-            let name = infos?.name ?? "Device " + folder.lastPathComponent.prefix(8)
-            var details = infos?.runtime
-            if type != .virtualDevice {
-                // Xcode gives every clone the same name: add the UDID prefix to tell them apart
-                details = [details, String(folder.lastPathComponent.prefix(8))].compactMap { $0 }.joined(separator: " · ")
-            }
-
-            results.append(CleanableItem(
-                id: folder.lastPathComponent,
-                name: name,
-                path: folder.path,
-                size: size,
-                type: type,
-                isDirectory: true,
-                details: details,
-                appIconPath: nil,
-                buildGroup: nil
-            ))
-        }
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    private func refreshFreeSpace() {
+        let values = try? URL(fileURLWithPath: NSHomeDirectory())
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        freeSpace = values?.volumeAvailableCapacityForImportantUsage
     }
 
-    /// Lists .xcarchive bundles (Archives/<date>/<name>.xcarchive).
-    private func scanArchives() -> [CleanableItem] {
-        let url = URL(fileURLWithPath: archivesPath)
-        guard let days = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return [] }
+    // MARK: - Cleaning
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        dateFormatter.timeStyle = .none
-
-        var results: [CleanableItem] = []
-        for day in days {
-            guard let archives = try? fileManager.contentsOfDirectory(at: day, includingPropertiesForKeys: nil) else { continue }
-
-            for archive in archives where archive.pathExtension == "xcarchive" {
-                let size = getDirectorySize(url: archive)
-                guard size > 0 else { continue }
-
-                var name = archive.deletingPathExtension().lastPathComponent
-                var detailParts: [String] = []
-                var iconPath: String? = nil
-
-                if let data = try? Data(contentsOf: archive.appendingPathComponent("Info.plist")),
-                   let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
-                    if let archiveName = plist["Name"] as? String {
-                        name = archiveName
-                    }
-                    if let app = plist["ApplicationProperties"] as? [String: Any] {
-                        if let version = app["CFBundleShortVersionString"] as? String {
-                            let build = (app["CFBundleVersion"] as? String).map { " (\($0))" } ?? ""
-                            detailParts.append("v\(version)\(build)")
-                        }
-                        if let appPath = app["ApplicationPath"] as? String {
-                            let appUrl = archive.appendingPathComponent("Products").appendingPathComponent(appPath)
-                            iconPath = findIconFile(in: appUrl)
-                            if let path = iconPath {
-                                IconThumbnailCache.shared.preloadThumbnail(forKey: path, fromPath: path)
-                            }
-                        }
-                    }
-                    if let date = plist["CreationDate"] as? Date {
-                        detailParts.append(dateFormatter.string(from: date))
-                    }
-                }
-
-                results.append(CleanableItem(
-                    id: archive.path,
-                    name: name,
-                    path: archive.path,
-                    size: size,
-                    type: .archives,
-                    isDirectory: true,
-                    details: detailParts.isEmpty ? nil : detailParts.joined(separator: " · "),
-                    appIconPath: iconPath,
-                    buildGroup: nil
-                ))
-            }
-        }
-
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    func delete(_ item: CleanableItem) {
+        clean([item])
     }
 
-    private func getDeviceInfos(url: URL) -> (name: String, runtime: String)? {
-        let plistUrl = url.appendingPathComponent("device.plist")
-        guard let plistData = try? Data(contentsOf: plistUrl),
-              let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any],
-              let name = plist["name"] as? String,
-              let runtimeRaw = plist["runtime"] as? String else {
-            return nil
-        }
-        
-        // Parse runtime: com.apple.CoreSimulator.SimRuntime.iOS-26-2 -> iOS 26.2
-        var runtime = runtimeRaw.components(separatedBy: ".").last ?? runtimeRaw
-        runtime = runtime.replacingOccurrences(of: "-", with: " ") // iOS 26 2
-        
-        // Try to make it look like "iOS 17.2"
-        if let range = runtime.range(of: "\\d+ \\d+", options: .regularExpression) {
-             let versionPart = runtime[range]
-             let formattedVersion = versionPart.replacingOccurrences(of: " ", with: ".")
-             runtime = runtime.replacingOccurrences(of: versionPart, with: formattedVersion)
-        }
-        
-        return (name, runtime)
-    }
-    
-    private func getDirectorySize(url: URL) -> Int64 {
-        // Simple recursive calculation
-        guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
-        var size: Int64 = 0
-        for case let fileUrl as URL in enumerator {
-            if let fileSize = (try? fileUrl.resourceValues(forKeys: [.fileSizeKey]).fileSize) {
-                size += Int64(fileSize)
-            }
-        }
-        return size
-    }
-
-    private func findAppDetails(in url: URL) -> (name: String, iconPath: String?)? {
-        let buildProductsPath = url.appendingPathComponent("Build/Products")
-        
-        // We only want to look a few levels deep to find the .app
-        // Typical path: Build/Products/Debug-iphonesimulator/MyApp.app
-        
-        guard let contents = try? fileManager.contentsOfDirectory(at: buildProductsPath, includingPropertiesForKeys: nil) else { return nil }
-        
-        // Prioritize simulator builds
-        let sortedContents = contents.sorted {
-            if $0.lastPathComponent.contains("iphonesimulator") { return true }
-            if $1.lastPathComponent.contains("iphonesimulator") { return false }
-            return $0.lastPathComponent < $1.lastPathComponent
-        }
-        
-        for folder in sortedContents {
-             guard let products = try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { continue }
-             for product in products {
-                 if product.pathExtension == "app" {
-                     let appName = product.deletingPathExtension().lastPathComponent
-                     let iconPath = findIconFile(in: product)
-                     return (appName, iconPath)
-                 }
-             }
-        }
-        
-        return nil
-    }
-    
-    private func findIconFile(in appBundleUrl: URL) -> String? {
-        // Strategy 1: Check Info.plist for icon file reference (most reliable)
-        if let iconFromPlist = findIconFromPlist(in: appBundleUrl) {
-            return iconFromPlist
-        }
-        
-        // Strategy 2: Look for .icns files (macOS apps — in Contents/Resources/)
-        let resourcesUrl = appBundleUrl.appendingPathComponent("Contents/Resources")
-        if let contents = try? fileManager.contentsOfDirectory(at: resourcesUrl, includingPropertiesForKeys: nil) {
-            // Prefer AppIcon.icns
-            if let appIconIcns = contents.first(where: { $0.lastPathComponent == "AppIcon.icns" }) {
-                return appIconIcns.path
-            }
-            // Any .icns file
-            if let anyIcns = contents.first(where: { $0.pathExtension == "icns" }) {
-                return anyIcns.path
-            }
-        }
-        
-        // Strategy 3: iOS standard — look for common AppIcon PNGs at bundle root
-        let commonNames = [
-            "AppIcon60x60@2x.png", "AppIcon60x60@3x.png",
-            "AppIcon76x76@2x~ipad.png", "AppIcon76x76@2x.png",
-            "AppIcon83.5x83.5@2x~ipad.png",
-            "AppIcon40x40@2x.png", "AppIcon40x40@3x.png",
-            "AppIcon29x29@2x.png", "AppIcon29x29@3x.png",
-            "AppIcon20x20@2x.png", "AppIcon20x20@3x.png"
-        ]
-        for name in commonNames {
-            let fileUrl = appBundleUrl.appendingPathComponent(name)
-            if fileManager.fileExists(atPath: fileUrl.path) {
-                return fileUrl.path
-            }
-        }
-        
-        // Strategy 4: Look for ANY file matching AppIcon* pattern (covers non-standard names like AppIcon-Dev60x60@2x.png)
-        if let contents = try? fileManager.contentsOfDirectory(at: appBundleUrl, includingPropertiesForKeys: nil) {
-            // Prefer largest AppIcon png (better quality)
-            let appIcons = contents.filter { 
-                $0.lastPathComponent.hasPrefix("AppIcon") && $0.pathExtension == "png" 
-            }
-            if let best = appIcons.max(by: { fileSize(at: $0) < fileSize(at: $1) }) {
-                return best.path
-            }
-            
-            // Any Icon*.png
-            if let icon = contents.first(where: {
-                $0.lastPathComponent.lowercased().hasPrefix("icon") && $0.pathExtension == "png"
-            }) {
-                return icon.path
-            }
-        }
-        
-        // Strategy 5: Recursive search in bundle (up to 3 levels deep, for unusual structures)
-        if let enumerator = fileManager.enumerator(at: appBundleUrl, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) {
-            var depth = 0
-            for case let fileUrl as URL in enumerator {
-                // Limit depth
-                let relPath = fileUrl.path.replacingOccurrences(of: appBundleUrl.path, with: "")
-                depth = relPath.components(separatedBy: "/").count - 1
-                if depth > 3 { enumerator.skipDescendants(); continue }
-                
-                let name = fileUrl.lastPathComponent
-                if name.hasPrefix("AppIcon") && fileUrl.pathExtension == "png" {
-                    return fileUrl.path
-                }
-                if fileUrl.pathExtension == "icns" {
-                    return fileUrl.path
-                }
-            }
-        }
-        
-        return nil
-    }
-    
-    /// Reads Info.plist to find the app icon file path
-    private func findIconFromPlist(in appBundleUrl: URL) -> String? {
-        // Try iOS-style plist (at bundle root)
-        let plistPaths = [
-            appBundleUrl.appendingPathComponent("Info.plist"),
-            appBundleUrl.appendingPathComponent("Contents/Info.plist")
-        ]
-        
-        for plistUrl in plistPaths {
-            guard let data = try? Data(contentsOf: plistUrl),
-                  let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
-                continue
-            }
-            
-            // Check CFBundleIconFile (macOS) — typically "AppIcon" → look for AppIcon.icns
-            if let iconFile = plist["CFBundleIconFile"] as? String {
-                let baseName = iconFile.hasSuffix(".icns") ? iconFile : iconFile + ".icns"
-                let resourceDir = plistUrl.deletingLastPathComponent()
-                
-                // Look in Resources directory
-                let resourcesPath = resourceDir.appendingPathComponent("Resources").appendingPathComponent(baseName)
-                if fileManager.fileExists(atPath: resourcesPath.path) {
-                    return resourcesPath.path
-                }
-                // Look directly next to plist
-                let directPath = resourceDir.appendingPathComponent(baseName)
-                if fileManager.fileExists(atPath: directPath.path) {
-                    return directPath.path
-                }
-            }
-            
-            // Check CFBundleIcons > CFBundlePrimaryIcon > CFBundleIconFiles (iOS)
-            if let icons = plist["CFBundleIcons"] as? [String: Any],
-               let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
-               let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String] {
-                // iconFiles contains base names like "AppIcon60x60"
-                for baseName in iconFiles {
-                    // Try with @2x/@3x suffix
-                    for suffix in ["@3x.png", "@2x.png", ".png"] {
-                        let fullName = baseName + suffix
-                        let path = appBundleUrl.appendingPathComponent(fullName)
-                        if fileManager.fileExists(atPath: path.path) {
-                            return path.path
-                        }
-                    }
-                }
-            }
-        }
-        
-        return nil
-    }
-    
-    /// Returns the file size (for sorting icon candidates by quality)
-    private func fileSize(at url: URL) -> Int64 {
-        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-    }
-    
-    // MARK: - Android Scanning
-
-    private func scanAndroidEmulators() -> [CleanableItem] {
-        let url = URL(fileURLWithPath: androidAvdPath)
-        var results: [CleanableItem] = []
-
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return []
-        }
-
-        for itemUrl in contents {
-            guard itemUrl.pathExtension == "avd" else { continue }
-            let size = getDirectorySize(url: itemUrl)
-            guard size > 0 else { continue }
-
-            let name = getAvdDisplayName(url: itemUrl) ?? itemUrl.deletingPathExtension().lastPathComponent
-
-            results.append(CleanableItem(
-                id: itemUrl.path,
-                name: name,
-                path: itemUrl.path,
-                size: size,
-                type: .androidEmulator,
-                isDirectory: true,
-                details: "Android Emulator",
-                appIconPath: nil,
-                buildGroup: nil
-            ))
-        }
-
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    private func getAvdDisplayName(url: URL) -> String? {
-        let configUrl = url.appendingPathComponent("config.ini")
-        guard let content = try? String(contentsOf: configUrl, encoding: .utf8) else { return nil }
-
-        for line in content.components(separatedBy: "\n") {
-            if line.hasPrefix("avd.ini.displayname=") {
-                let value = line.dropFirst("avd.ini.displayname=".count).trimmingCharacters(in: .whitespaces)
-                return value.isEmpty ? nil : value
-            }
-        }
-        return nil
-    }
-
-    private func scanGradleCaches() -> [CleanableItem] {
-        var results: [CleanableItem] = []
-        results.append(contentsOf: scanSubdirectories(at: gradleCachePath, type: .gradleCache, details: "Gradle Cache"))
-        results.append(contentsOf: scanSubdirectories(at: gradleDistsPath, type: .gradleCache, details: "Gradle Distribution"))
-        return results
-    }
-
-    private func scanAndroidStudioCaches() -> [CleanableItem] {
-        let url = URL(fileURLWithPath: androidStudioCachePath)
-        var results: [CleanableItem] = []
-
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return []
-        }
-
-        for itemUrl in contents {
-            guard itemUrl.lastPathComponent.hasPrefix("AndroidStudio") else { continue }
-            let size = getDirectorySize(url: itemUrl)
-            guard size > 0 else { continue }
-
-            results.append(CleanableItem(
-                id: itemUrl.path,
-                name: itemUrl.lastPathComponent,
-                path: itemUrl.path,
-                size: size,
-                type: .androidStudioCache,
-                isDirectory: true,
-                details: "Android Studio Cache",
-                appIconPath: nil,
-                buildGroup: nil
-            ))
-        }
-
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    private func scanAndroidSdk() -> [CleanableItem] {
-        var results: [CleanableItem] = []
-
-        // Platforms: ~/Library/Android/sdk/platforms/android-34 → "API 34"
-        let platformsPath = androidSdkBasePath + "/platforms"
-        let platformsUrl = URL(fileURLWithPath: platformsPath)
-        if let contents = try? fileManager.contentsOfDirectory(at: platformsUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
-            for itemUrl in contents {
-                let folderName = itemUrl.lastPathComponent // e.g. "android-34"
-                let size = getDirectorySize(url: itemUrl)
-                guard size > 0 else { continue }
-
-                let displayName = formatApiLevel(folderName)
-                results.append(CleanableItem(
-                    id: itemUrl.path,
-                    name: displayName,
-                    path: itemUrl.path,
-                    size: size,
-                    type: .androidSdk,
-                    isDirectory: true,
-                    details: "SDK Platform",
-                    appIconPath: nil,
-                    buildGroup: nil
-                ))
-            }
-        }
-
-        // Build Tools: ~/Library/Android/sdk/build-tools/34.0.0
-        let buildToolsPath = androidSdkBasePath + "/build-tools"
-        let buildToolsUrl = URL(fileURLWithPath: buildToolsPath)
-        if let contents = try? fileManager.contentsOfDirectory(at: buildToolsUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
-            for itemUrl in contents {
-                let size = getDirectorySize(url: itemUrl)
-                guard size > 0 else { continue }
-
-                results.append(CleanableItem(
-                    id: itemUrl.path,
-                    name: "Build Tools \(itemUrl.lastPathComponent)",
-                    path: itemUrl.path,
-                    size: size,
-                    type: .androidSdk,
-                    isDirectory: true,
-                    details: "Build Tools",
-                    appIconPath: nil,
-                    buildGroup: nil
-                ))
-            }
-        }
-
-        // System Images: ~/Library/Android/sdk/system-images/android-34
-        let systemImagesPath = androidSdkBasePath + "/system-images"
-        let systemImagesUrl = URL(fileURLWithPath: systemImagesPath)
-        if let apiLevels = try? fileManager.contentsOfDirectory(at: systemImagesUrl, includingPropertiesForKeys: [.isDirectoryKey]) {
-            for apiUrl in apiLevels {
-                // Each api level may have multiple variants (google_apis, google_apis_playstore, default...)
-                guard let variants = try? fileManager.contentsOfDirectory(at: apiUrl, includingPropertiesForKeys: [.isDirectoryKey]) else { continue }
-                for variantUrl in variants {
-                    let size = getDirectorySize(url: variantUrl)
-                    guard size > 0 else { continue }
-
-                    let apiName = formatApiLevel(apiUrl.lastPathComponent)
-                    let variantName = variantUrl.lastPathComponent
-                        .replacingOccurrences(of: "_", with: " ")
-                        .capitalized
-                    results.append(CleanableItem(
-                        id: variantUrl.path,
-                        name: "\(apiName) · \(variantName)",
-                        path: variantUrl.path,
-                        size: size,
-                        type: .androidSdk,
-                        isDirectory: true,
-                        details: "System Image",
-                        appIconPath: nil,
-                        buildGroup: nil
-                    ))
-                }
-            }
-        }
-
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    /// Converts "android-34" → "API 34", leaves other names unchanged
-    private func formatApiLevel(_ folderName: String) -> String {
-        if folderName.hasPrefix("android-"),
-           let level = Int(folderName.dropFirst("android-".count)) {
-            return "API \(level)"
-        }
-        return folderName
-    }
-
-    private func scanSubdirectories(at path: String, type: CleanableItemType, details: String?) -> [CleanableItem] {
-        let url = URL(fileURLWithPath: path)
-        var results: [CleanableItem] = []
-
-        guard let contents = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return []
-        }
-
-        for itemUrl in contents {
-            let size = getDirectorySize(url: itemUrl)
-            guard size > 0 else { continue }
-
-            results.append(CleanableItem(
-                id: itemUrl.path,
-                name: itemUrl.lastPathComponent,
-                path: itemUrl.path,
-                size: size,
-                type: type,
-                isDirectory: true,
-                details: details,
-                appIconPath: nil,
-                buildGroup: nil
-            ))
-        }
-
-        return results.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    // MARK: - Cleaning Logic
-    
-    /// Removes an item from disk. Simulators and runtimes go through simctl so CoreSimulator
-    /// stays consistent; everything else is moved to the trash. Blocking.
-    nonisolated private static func remove(_ item: CleanableItem) {
-        switch item.type {
-        case .virtualDevice, .testClones, .previews:
-            // Each device belongs to a device set (its parent folder)
-            let setPath = URL(fileURLWithPath: item.path).deletingLastPathComponent().path
-            Shell.run("/usr/bin/xcrun", arguments: ["simctl", "--set", setPath, "delete", item.id])
-        case .runtimes:
-            // Runtime volumes are mounted disk images owned by root: only simctl can remove them
-            if let identifier = runtimeIdentifier(mountPath: item.path) {
-                Shell.run("/usr/bin/xcrun", arguments: ["simctl", "runtime", "delete", identifier])
-                return
-            }
-        default:
-            break
-        }
-
-        // Move to trash (also a fallback if simctl left the folder behind)
-        guard FileManager.default.fileExists(atPath: item.path) else { return }
-        do {
-            try FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)
-        } catch {
-            print("Error trashing item: \(error)")
-        }
-    }
-
-    /// Finds the simctl runtime identifier for a mounted runtime volume.
-    nonisolated private static func runtimeIdentifier(mountPath: String) -> String? {
-        let result = Shell.run("/usr/bin/xcrun", arguments: ["simctl", "runtime", "list", "-j"])
-        guard result.status == 0,
-              let data = result.output.data(using: .utf8),
-              let images = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else {
-            return nil
-        }
-        return images.values.first { ($0["mountPath"] as? String) == mountPath }?["identifier"] as? String
-    }
-
-    func delete(item: CleanableItem) {
-        Self.remove(item)
-
-        // Remove from list
-        DispatchQueue.main.async {
-            self.items.removeAll { $0.id == item.id }
-            
-            // Update stats
-            if var stats = self.categoryStats[item.type] {
-                stats.count -= 1
-                stats.size -= item.size
-                self.categoryStats[item.type] = stats
-            }
-            
-            self.totalSize -= item.size
-        }
-    }
-    
-    func cleanAll() {
+    /// Removes items one by one off the main thread, updating the lists as it goes.
+    func clean(_ itemsToClean: [CleanableItem]) {
+        guard !itemsToClean.isEmpty, !isCleaning else { return }
         isCleaning = true
+        cleaningDone = 0
+        cleaningTotal = itemsToClean.count
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
-
-            // Artificial delay for better UX if it's too fast, or just to show the animation
-            if self.items.count < 5 {
-                Thread.sleep(forTimeInterval: 1.0)
-            }
-
-            for item in self.items {
-                self.delete(item: item)
-                // Small sleep to allow UI to update and show progress if needed
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-
-            DispatchQueue.main.async {
-                self.isCleaning = false
-            }
-        }
-    }
-
-    func cleanItems(_ items: [CleanableItem]) {
-        Task { @MainActor in
-            isCleaning = true
-            defer { isCleaning = false }
-
-            for item in items {
-                await Task.detached(priority: .background) {
-                    Self.remove(item)
+        Task {
+            for item in itemsToClean {
+                await Task.detached(priority: .userInitiated) {
+                    DiskScanner.remove(item)
                 }.value
+                forget(item)
+                cleaningDone += 1
             }
-
-            // Rescan after cleaning
-            scan()
+            isCleaning = false
+            refreshFreeSpace()
         }
     }
 
-    // MARK: - Global Confirmation Flow
-    
-    func proposeDelete(item: CleanableItem) {
-        confirmationTitle = "Delete this item?"
-        confirmationMessage = "\(item.sizeString) will be freed."
-        confirmationDetail = "\"\(item.name)\""
-        confirmationActionTitle = "Delete"
-        isConfirmationDangerous = true
-        
-        pendingConfirmationAction = { [weak self] in
-            self?.delete(item: item)
-        }
-        
-        withAnimation {
-            showingConfirmation = true
-        }
-    }
-    
-    func proposeClean(items: [CleanableItem]) {
-        let size = items.reduce(0) { $0 + $1.size }
-        let sizeString = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-        
-        confirmationTitle = "Clean selected items?"
-        confirmationMessage = "\(items.count) items, \(sizeString) will be deleted."
-        confirmationDetail = nil
-        confirmationActionTitle = "Clean"
-        isConfirmationDangerous = true
-        
-        pendingConfirmationAction = { [weak self] in
-            self?.cleanItems(items)
-        }
-        
-        withAnimation {
-            showingConfirmation = true
-        }
-    }
-    
-    func confirmAction() {
-        pendingConfirmationAction?()
-        closeConfirmation()
-    }
-    
-    func cancelAction() {
-        closeConfirmation()
-    }
-    
-    private func closeConfirmation() {
-        withAnimation {
-            showingConfirmation = false
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            self.pendingConfirmationAction = nil
-        }
+    private func forget(_ item: CleanableItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id && $0.type == item.type }) else { return }
+        items.remove(at: index)
+        guard var stats = categoryStats[item.type] else { return }
+        stats.count -= 1
+        stats.size -= item.size
+        categoryStats[item.type] = stats.count > 0 ? stats : nil
     }
 }

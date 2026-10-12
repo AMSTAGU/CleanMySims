@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @EnvironmentObject var simulatorManager: SimulatorManager
+    @Environment(SimulatorManager.self) private var simulatorManager
     @State private var showScanComplete = false
     @State private var showCleanComplete = false
 
@@ -267,6 +267,6 @@ private struct LegendItem: View {
 
 #Preview {
     DashboardView()
-        .environmentObject(SimulatorManager())
+        .environment(SimulatorManager())
         .frame(width: 600, height: 600)
 }

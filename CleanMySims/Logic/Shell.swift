@@ -7,33 +7,10 @@
 
 import Foundation
 
-class Shell {
+nonisolated enum Shell {
+    /// Runs an executable with explicit arguments (no shell, so paths with spaces are safe). Blocking.
     @discardableResult
-    static func run(_ command: String) -> String {
-        let task = Process()
-        let pipe = Pipe()
-        
-        task.standardOutput = pipe
-        task.standardError = pipe
-        task.arguments = ["-c", command]
-        task.launchPath = "/bin/zsh"
-        task.standardInput = nil
-        
-        do {
-            try task.run()
-        } catch {
-            return error.localizedDescription
-        }
-        
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        
-        return output
-    }
-
-    /// Runs an executable with explicit arguments (no shell quoting issues with spaces in paths).
-    @discardableResult
-    nonisolated static func run(_ executable: String, arguments: [String]) -> (output: String, status: Int32) {
+    static func run(_ executable: String, arguments: [String]) -> (output: String, status: Int32) {
         let task = Process()
         let pipe = Pipe()
 
@@ -52,5 +29,11 @@ class Shell {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         return (String(data: data, encoding: .utf8) ?? "", task.terminationStatus)
+    }
+
+    /// Runs `xcrun simctl …`.
+    @discardableResult
+    static func simctl(_ arguments: String...) -> (output: String, status: Int32) {
+        run("/usr/bin/xcrun", arguments: ["simctl"] + arguments)
     }
 }
