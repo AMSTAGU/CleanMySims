@@ -36,14 +36,6 @@ enum Theme {
             Color(nsColor: nsColor(for: type))
         }
 
-        /// Translucent tint of the category color, used behind treemap tiles.
-        static func tileBackground(for type: CleanableItemType) -> Color {
-            let base = nsColor(for: type)
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                base.withAlphaComponent(appearance.isDark ? 0.28 : 0.2)
-            })
-        }
-
         private static func nsColor(for type: CleanableItemType) -> NSColor {
             switch type {
             case .testClones: return NSColor(hex: 0x0FA3B1)

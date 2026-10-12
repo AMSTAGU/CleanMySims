@@ -58,19 +58,16 @@ private struct TreemapTile: View {
     var body: some View {
         Button(action: action) {
             content
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(
-                    Theme.Colors.tileBackground(for: entry.type),
-                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                )
+                .background(Theme.Colors.color(for: entry.type))
                 .overlay {
                     if entry.isActive {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(Theme.Colors.accent, lineWidth: 2)
+                        Rectangle().strokeBorder(.white, lineWidth: 3)
                     }
                 }
-                .brightness(isHovered ? -0.03 : 0)
-                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .brightness(isHovered ? 0.06 : 0)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
@@ -78,18 +75,22 @@ private struct TreemapTile: View {
         .accessibilityLabel("\(title), \(sizeText)")
     }
 
-    private var cornerRadius: CGFloat {
-        min(12, min(size.width, size.height) / 4)
+    private var icon: some View {
+        Image(systemName: entry.type.iconName)
+            .font(.system(size: 13, weight: .semibold))
+            .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
     }
 
     @ViewBuilder
     private var content: some View {
         if size.width >= 120 && size.height >= 90 {
             VStack(alignment: .leading, spacing: 3) {
-                CategoryIcon(type: entry.type, size: 28)
+                HStack(spacing: 6) {
+                    icon
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                }
                 Spacer(minLength: 4)
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
                 Text(sizeText)
                     .font(.system(size: size.width >= 200 && size.height >= 160 ? 24 : 17, weight: .bold))
                     .contentTransition(.numericText())
@@ -97,35 +98,33 @@ private struct TreemapTile: View {
                     HStack(spacing: 6) {
                         Text("^[\(entry.itemCount) item](inflect: true)")
                             .font(.system(size: 11))
-                            .foregroundStyle(Theme.Colors.secondaryText)
+                            .opacity(0.85)
                         if entry.type.isSafeToDelete {
-                            SafeBadge()
+                            SafeBadge(onColor: true)
                         }
                     }
                 }
             }
             .lineLimit(1)
-            .foregroundStyle(Theme.Colors.primaryText)
             .padding(12)
         } else if size.width >= 64 && size.height >= 50 {
             VStack(alignment: .leading, spacing: 2) {
-                CategoryIcon(type: entry.type, size: 20)
-                Spacer(minLength: 2)
-                if size.width >= 70 && size.height >= 70 {
-                    Text(entry.type.shortTitle)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.primaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                HStack(spacing: 5) {
+                    icon
+                    if size.width >= 90 {
+                        Text(entry.type.shortTitle)
+                            .font(.system(size: 11, weight: .semibold))
+                            .minimumScaleFactor(0.8)
+                    }
                 }
+                Spacer(minLength: 2)
                 Text(sizeText)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Theme.Colors.primaryText)
-                    .lineLimit(1)
             }
+            .lineLimit(1)
             .padding(8)
         } else if size.width >= 24 && size.height >= 24 {
-            CategoryIcon(type: entry.type, size: 16)
+            icon
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
