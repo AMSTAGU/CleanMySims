@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import AppKit
 
 /// Progress events emitted while scanning, in the order they happen.
 nonisolated enum ScanEvent: Sendable {
@@ -66,6 +67,16 @@ nonisolated struct DiskScanner: Sendable {
             }
         case .androidSdk:
             items = androidSdk()
+        case .agentTemp:
+            items = agentTemp()
+        case .agentConversations:
+            items = agentConversations()
+        case .agentCaches:
+            items = agentCaches()
+        case .agentVMs:
+            items = agentVMs()
+        case .localModels:
+            items = localModels()
         }
         return items.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
@@ -411,7 +422,358 @@ nonisolated struct DiskScanner: Sendable {
         return folderName
     }
 
+
+    // MARK: - AI agents
+
+    /// Apps of the AI tools, by bundle identifier: their icon is shown next to their items, and their
+    /// caches are left alone while they are open.
+    nonisolated enum AgentApp: String, Sendable {
+        case claude = "com.anthropic.claudefordesktop"
+        case codex = "com.openai.codex"
+        case cursor = "com.todesktop.230313mzl4w4u92"
+        case antigravity = "com.google.antigravity"
+        case antigravityIDE = "com.google.antigravity-ide"
+        case ollama = "com.electron.ollama"
+        case lmStudio = "ai.elementlabs.lmstudio"
+
+        var name: String {
+            switch self {
+            case .claude: return "Claude"
+            case .codex: return "Codex"
+            case .cursor: return "Cursor"
+            case .antigravity: return "Antigravity"
+            case .antigravityIDE: return "Antigravity IDE"
+            case .ollama: return "Ollama"
+            case .lmStudio: return "LM Studio"
+            }
+        }
+
+        var isRunning: Bool {
+            !NSRunningApplication.runningApplications(withBundleIdentifier: rawValue).isEmpty
+        }
+
+        /// The app's own icon, as Finder shows it, loaded into the cache. Nil when the app isn't installed.
+        var iconPath: String? {
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: rawValue) else { return nil }
+            IconThumbnailCache.shared.preloadSystemIcon(forPath: url.path)
+            return url.path
+        }
+    }
+
+    private static let claudeHome = home + "/.claude"
+    private static let claudeTemp = "/private/tmp/claude-\(getuid())"
+    private static let claudeAppSupport = home + "/Library/Application Support/Claude"
+    private static let cursorAppSupport = home + "/Library/Application Support/Cursor"
+    private static let codexHome = home + "/.codex"
+    private static let ollamaModels = home + "/.ollama/models"
+
+    /// Claude Code sessions that may still write to their files: running ones (a live process in
+    /// ~/.claude/sessions) and background jobs that are working or waiting for an answer.
+    private struct ActiveSessions {
+        var ids: Set<String> = []
+        var versions: Set<String> = []
+
+        func contains(_ sessionID: String) -> Bool {
+            ids.contains { sessionID.hasPrefix($0) }
+        }
+    }
+
+    private func activeClaudeSessions() -> ActiveSessions {
+        var active = ActiveSessions()
+        for file in contents(of: Self.claudeHome + "/sessions") where file.pathExtension == "json" {
+            guard let json = Self.json(at: file),
+                  let pid = (json["pid"] as? NSNumber)?.int32Value,
+                  kill(pid, 0) == 0 || errno == EPERM else { continue }
+            if let id = json["sessionId"] as? String { active.ids.insert(id) }
+            if let version = json["version"] as? String { active.versions.insert(version) }
+        }
+        for job in contents(of: Self.claudeHome + "/jobs") where isDirectory(job) {
+            let state = Self.json(at: job.appendingPathComponent("state.json"))
+            guard !["done", "stopped"].contains(state?["state"] as? String ?? "") else { continue }
+            active.ids.insert(state?["sessionId"] as? String ?? job.lastPathComponent)
+        }
+        return active
+    }
+
+    /// Project folder names by Claude Code project key ("-Users-me-Developer-My-App" → "My-App"). The key
+    /// is the path with every non-alphanumeric character turned into a dash, so it can't just be split:
+    /// read the working directory recorded in a conversation, or else find the folder on disk.
+    private func claudeProjectNames() -> [String: String] {
+        var names: [String: String] = [:]
+        for project in contents(of: Self.claudeHome + "/projects") {
+            let key = project.lastPathComponent
+            let transcripts = contents(of: project.path).filter { $0.pathExtension == "jsonl" }
+            let cwd = transcripts.prefix(3).lazy.compactMap { Self.firstValue(of: "cwd", inFileAt: $0) }.first
+            names[key] = (cwd ?? Self.path(forProjectKey: key)).map { URL(fileURLWithPath: $0).lastPathComponent }
+        }
+        return names
+    }
+
+    /// Walks down from / matching each folder's dashed name against the key. Nil when the folder is gone.
+    private static func path(forProjectKey key: String) -> String? {
+        func dashed(_ name: String) -> String {
+            String(name.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) && $0.isASCII ? Character($0) : "-" })
+        }
+        var path = ""
+        var rest = Substring(key)
+        while !rest.isEmpty {
+            let children = (try? FileManager.default.contentsOfDirectory(atPath: path.isEmpty ? "/" : path)) ?? []
+            // Longest match first: "My-App" before "My"
+            let match = children.map { ($0, "-" + dashed($0)) }
+                .filter { rest.hasPrefix($0.1) && (rest.count == $0.1.count || rest.dropFirst($0.1.count).hasPrefix("-")) }
+                .max { $0.1.count < $1.1.count }
+            guard let (name, prefix) = match else { return nil }
+            path += "/" + name
+            rest = rest.dropFirst(prefix.count)
+        }
+        return path.isEmpty ? nil : path
+    }
+
+    /// A conversation written to in the last few minutes may belong to a session not registered as running.
+    private static func isRecentlyActive(_ url: URL) -> Bool {
+        let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        return date.map { Date().timeIntervalSince($0) < 10 * 60 } ?? false
+    }
+
+    private func modificationDate(_ url: URL) -> String? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?
+            .formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(.app))
+    }
+
+    /// Scratch folders of finished Claude Code sessions (/tmp/claude-<uid>/<project>/<session>), the
+    /// temp folders of finished background jobs, and Codex's temp folders.
+    private func agentTemp() -> [CleanableItem] {
+        let active = activeClaudeSessions()
+        let names = claudeProjectNames()
+        let claudeIcon = AgentApp.claude.iconPath
+        var results: [CleanableItem] = []
+
+        for project in contents(of: Self.claudeTemp) where project.lastPathComponent.hasPrefix("-") {
+            let key = project.lastPathComponent
+            for session in contents(of: project.path) where isDirectory(session) {
+                guard !Task.isCancelled else { return results }
+                let id = session.lastPathComponent
+                let transcript = URL(fileURLWithPath: Self.claudeHome + "/projects/\(key)/\(id).jsonl")
+                guard !active.contains(id), !Self.isRecentlyActive(transcript) else { continue }
+                let size = diskSize(of: session, type: .agentTemp)
+                guard size > 0 else { continue }
+                let details = ["Claude Code session \(id.prefix(8))", modificationDate(session)].compactMap { $0 }
+                results.append(CleanableItem(id: session.path, name: names[key] ?? key, path: session.path, size: size,
+                                             type: .agentTemp, details: details.joined(separator: " · "),
+                                             appIconPath: claudeIcon))
+            }
+        }
+
+        for job in contents(of: Self.claudeHome + "/jobs") where isDirectory(job) {
+            guard !Task.isCancelled else { return results }
+            let state = Self.json(at: job.appendingPathComponent("state.json"))
+            guard ["done", "stopped"].contains(state?["state"] as? String ?? "") else { continue }
+            let tmp = job.appendingPathComponent("tmp")
+            let size = diskSize(of: tmp, type: .agentTemp)
+            guard size > 0 else { continue }
+            let project = (state?["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
+            let summary = (state?["detail"] as? String).map { "Background job: \($0)" } ?? "Claude Code background job"
+            results.append(CleanableItem(id: tmp.path, name: project ?? job.lastPathComponent, path: tmp.path, size: size,
+                                         type: .agentTemp, details: summary, appIconPath: claudeIcon))
+        }
+
+        if !AgentApp.codex.isRunning {
+            let codexIcon = AgentApp.codex.iconPath
+            for folder in contents(of: "/private/tmp") where folder.lastPathComponent.hasPrefix("codex-") {
+                let size = diskSize(of: folder, type: .agentTemp)
+                guard size > 0 else { continue }
+                let name = folder.lastPathComponent.dropFirst("codex-".count).replacingOccurrences(of: "-", with: " ")
+                results.append(CleanableItem(id: folder.path, name: "Codex \(name)", path: folder.path, size: size,
+                                             type: .agentTemp, details: "Codex temp folder", appIconPath: codexIcon))
+            }
+        }
+        return results
+    }
+
+    /// Conversation history: Claude Code per project, Codex per month, Antigravity's recordings and backup.
+    private func agentConversations() -> [CleanableItem] {
+        let active = activeClaudeSessions()
+        let names = claudeProjectNames()
+        var results: [CleanableItem] = []
+
+        let claudeIcon = AgentApp.claude.iconPath
+        for project in contents(of: Self.claudeHome + "/projects") where isDirectory(project) {
+            guard !Task.isCancelled else { return results }
+            let transcripts = contents(of: project.path).filter { $0.pathExtension == "jsonl" }
+            // A running session keeps writing its conversation here
+            guard !transcripts.contains(where: {
+                active.contains($0.deletingPathExtension().lastPathComponent) || Self.isRecentlyActive($0)
+            }) else { continue }
+            let size = diskSize(of: project, type: .agentConversations)
+            guard size > 0 else { continue }
+            let key = project.lastPathComponent
+            results.append(CleanableItem(
+                id: project.path, name: names[key] ?? key, path: project.path, size: size, type: .agentConversations,
+                details: transcripts.isEmpty ? "Claude Code" : "Claude Code · \(transcripts.count) conversation\(transcripts.count == 1 ? "" : "s")",
+                appIconPath: claudeIcon
+            ))
+        }
+
+        let codexIcon = AgentApp.codex.iconPath
+        let codexRunning = AgentApp.codex.isRunning
+        let now = Calendar.current.dateComponents([.year, .month], from: Date())
+        for year in contents(of: Self.codexHome + "/sessions") {
+            for month in contents(of: year.path) {
+                guard !Task.isCancelled else { return results }
+                // Codex writes today's conversations in the current month
+                if codexRunning && Int(year.lastPathComponent) == now.year && Int(month.lastPathComponent) == now.month { continue }
+                let size = diskSize(of: month, type: .agentConversations)
+                guard size > 0 else { continue }
+                var components = DateComponents()
+                components.year = Int(year.lastPathComponent)
+                components.month = Int(month.lastPathComponent)
+                let name = Calendar.current.date(from: components)?
+                    .formatted(Date.FormatStyle().month(.wide).year().locale(.app)) ?? month.lastPathComponent
+                results.append(CleanableItem(id: month.path, name: name, path: month.path, size: size,
+                                             type: .agentConversations, details: "Codex", appIconPath: codexIcon))
+            }
+        }
+        results += single(Self.codexHome + "/archived_sessions", name: "Archived conversations", type: .agentConversations)
+            .map { CleanableItem(id: $0.id, name: $0.name, path: $0.path, size: $0.size, type: $0.type,
+                                 details: "Codex", appIconPath: codexIcon) }
+
+        let gemini = Self.home + "/.gemini"
+        for (folder, app) in [("antigravity", AgentApp.antigravity), ("antigravity-cli", .antigravity), ("antigravity-ide", .antigravityIDE)]
+        where !app.isRunning {
+            let details = folder == "antigravity-cli" ? "Antigravity CLI" : app.name
+            results += single(gemini + "/\(folder)/browser_recordings", name: "Browser recordings", type: .agentConversations)
+                .map { CleanableItem(id: $0.id, name: $0.name, path: $0.path, size: $0.size, type: $0.type,
+                                     details: details, appIconPath: app.iconPath) }
+        }
+        results += single(gemini + "/antigravity-backup", name: "Antigravity backup", type: .agentConversations)
+            .map { CleanableItem(id: $0.id, name: $0.name, path: $0.path, size: $0.size, type: $0.type,
+                                 details: "Old copy of Antigravity's data", appIconPath: AgentApp.antigravity.iconPath) }
+        return results
+    }
+
+    /// Older Claude Code versions and the caches of the agent apps that are closed.
+    private func agentCaches() -> [CleanableItem] {
+        var results: [CleanableItem] = []
+
+        // The installer keeps previous versions; skip the current one and those running sessions use
+        let active = activeClaudeSessions()
+        let current = URL(fileURLWithPath: Self.home + "/.local/bin/claude").resolvingSymlinksInPath().lastPathComponent
+        let claudeIcon = AgentApp.claude.iconPath
+        for version in contents(of: Self.home + "/.local/share/claude/versions") {
+            let number = version.lastPathComponent
+            guard number != current, !active.versions.contains(number), !Task.isCancelled else { continue }
+            let size = diskSize(of: version, type: .agentCaches)
+            guard size > 0 else { continue }
+            results.append(CleanableItem(id: version.path, name: "Claude Code \(number)", path: version.path, size: size,
+                                         type: .agentCaches, details: "Older version", appIconPath: claudeIcon))
+        }
+
+        let appCaches: [(AgentApp, String, [(path: String, name: String)])] = [
+            (.claude, Self.claudeAppSupport, [("Cache", "Web cache"), ("Code Cache", "Code cache"), ("GPUCache", "GPU cache")]),
+            (.cursor, Self.cursorAppSupport, [("Cache", "Web cache"), ("Code Cache", "Code cache"), ("GPUCache", "GPU cache"),
+                                              ("CachedData", "Cached data"), ("CachedExtensionVSIXs", "Extension downloads"),
+                                              ("User/globalStorage/state.vscdb.backup", "Settings database backup")]),
+            (.codex, Self.codexHome, [("cache", "Cache")]),
+        ]
+        for (app, root, folders) in appCaches where !app.isRunning {
+            let icon = app.iconPath
+            for folder in folders {
+                guard !Task.isCancelled else { return results }
+                let path = root + "/" + folder.path
+                results += single(path, name: folder.name, type: .agentCaches)
+                    .map { CleanableItem(id: $0.id, name: $0.name, path: $0.path, size: $0.size, type: $0.type,
+                                         details: app.name, appIconPath: icon) }
+            }
+        }
+        return results
+    }
+
+    /// The virtual machine Claude runs agents in (vm_bundles), while Claude is closed.
+    private func agentVMs() -> [CleanableItem] {
+        guard !AgentApp.claude.isRunning else { return [] }
+        let icon = AgentApp.claude.iconPath
+        return contents(of: Self.claudeAppSupport + "/vm_bundles").compactMap { bundle in
+            guard !Task.isCancelled else { return nil }
+            let size = diskSize(of: bundle, type: .agentVMs)
+            guard size > 0 else { return nil }
+            return CleanableItem(id: bundle.path, name: "Claude virtual machine", path: bundle.path, size: size,
+                                 type: .agentVMs, details: "Claude · \(bundle.lastPathComponent)", appIconPath: icon)
+        }
+    }
+
+    /// Models downloaded for Ollama (one per tag), LM Studio and Hugging Face.
+    private func localModels() -> [CleanableItem] {
+        var results: [CleanableItem] = []
+
+        // Ollama: manifests/<registry>/<namespace>/<model>/<tag> list the blobs of each model
+        let ollamaIcon = AgentApp.ollama.iconPath
+        for registry in contents(of: Self.ollamaModels + "/manifests") {
+            for namespace in contents(of: registry.path) {
+                for model in contents(of: namespace.path) {
+                    for tag in contents(of: model.path) {
+                        guard !Task.isCancelled else { return results }
+                        let blobs = Self.ollamaBlobs(manifest: tag)
+                        let size = blobs.reduce(0) { $0 + diskSize(of: $1, type: .localModels) }
+                        guard size > 0 else { continue }
+                        var name = "\(model.lastPathComponent):\(tag.lastPathComponent)"
+                        if namespace.lastPathComponent != "library" { name = "\(namespace.lastPathComponent)/\(name)" }
+                        if registry.lastPathComponent != "registry.ollama.ai" { name = "\(registry.lastPathComponent)/\(name)" }
+                        results.append(CleanableItem(id: tag.path, name: name, path: tag.path, size: size,
+                                                     type: .localModels, details: "Ollama", appIconPath: ollamaIcon))
+                    }
+                }
+            }
+        }
+
+        // LM Studio: models/<publisher>/<model>, in its current and former folder
+        let lmStudioIcon = AgentApp.lmStudio.iconPath
+        for root in [Self.home + "/.lmstudio/models", Self.home + "/.cache/lm-studio/models"] {
+            for publisher in contents(of: root) {
+                results += subdirectories(of: publisher.path, type: .localModels, details: nil)
+                    .map { CleanableItem(id: $0.id, name: $0.name, path: $0.path, size: $0.size, type: $0.type,
+                                         details: "LM Studio · \(publisher.lastPathComponent)", appIconPath: lmStudioIcon) }
+            }
+        }
+
+        // Hugging Face: hub/models--org--name
+        results += subdirectories(of: Self.home + "/.cache/huggingface/hub", type: .localModels, details: nil) {
+            $0.lastPathComponent.hasPrefix("models--") || $0.lastPathComponent.hasPrefix("datasets--")
+        }.map { item in
+            let parts = item.name.components(separatedBy: "--")
+            let kind = parts.first == "datasets" ? "Hugging Face dataset" : "Hugging Face"
+            return CleanableItem(id: item.id, name: parts.dropFirst().joined(separator: "/"), path: item.path,
+                                 size: item.size, type: item.type, details: kind)
+        }
+        return results
+    }
+
+    /// Blob files an Ollama manifest points to (its config and layers).
+    private static func ollamaBlobs(manifest: URL) -> [URL] {
+        guard let json = json(at: manifest) else { return [] }
+        let layers = (json["layers"] as? [[String: Any]] ?? []) + [json["config"] as? [String: Any] ?? [:]]
+        return layers.compactMap { $0["digest"] as? String }.map {
+            URL(fileURLWithPath: ollamaModels + "/blobs/" + $0.replacingOccurrences(of: ":", with: "-"))
+        }
+    }
+
     // MARK: - Helpers
+
+    private static func json(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    /// First `"key":"value"` in the first 64 KB of a JSON Lines file, without parsing whole lines.
+    private static func firstValue(of key: String, inFileAt url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: 64 * 1024),
+              case let text = String(decoding: data, as: UTF8.self),
+              let range = text.range(of: "\"\(key)\":\"") else { return nil }
+        let rest = text[range.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return rest[..<end].replacingOccurrences(of: "\\/", with: "/")
+    }
 
     private static func plist(at url: URL) -> [String: Any]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -510,6 +872,20 @@ nonisolated struct DiskScanner: Sendable {
             try removeEmulator(item)
         case .androidSdk:
             return try removeSdkPackage(item)
+        case .agentTemp, .agentCaches, .agentVMs:
+            if let app = owningApp(item.path), app.isRunning {
+                throw RemovalError(message: "Quit \(app.name) first: it uses these files.")
+            }
+            try deleteFiles(at: item.path, permanently: true)
+        case .agentConversations:
+            try deleteFiles(at: item.path, permanently: false)
+            return true
+        case .localModels:
+            if item.path.hasPrefix(ollamaModels + "/") {
+                try removeOllamaModel(item)
+            } else {
+                try deleteFiles(at: item.path, permanently: true)
+            }
         }
         return false
     }
@@ -601,6 +977,38 @@ nonisolated struct DiskScanner: Sendable {
         if ProcessInfo.processInfo.environment["JAVA_HOME"] != nil { return [:] }
         let studioJDK = "/Applications/Android Studio.app/Contents/jbr/Contents/Home"
         return FileManager.default.fileExists(atPath: studioJDK) ? ["JAVA_HOME": studioJDK] : [:]
+    }
+
+    /// The app whose files these are, when it must be closed to delete them.
+    private static func owningApp(_ path: String) -> AgentApp? {
+        if path.hasPrefix(claudeAppSupport + "/") { return .claude }
+        if path.hasPrefix(cursorAppSupport + "/") { return .cursor }
+        if path.hasPrefix(codexHome + "/") || path.hasPrefix("/private/tmp/codex-") { return .codex }
+        return nil
+    }
+
+    /// Removes the model with `ollama rm`, which keeps the blobs other models share. Without the
+    /// command (or its server), does the same by hand: deletes the manifest and the blobs nothing else uses.
+    private static func removeOllamaModel(_ item: CleanableItem) throws {
+        let manifest = URL(fileURLWithPath: item.path)
+        let candidates = ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama", "/Applications/Ollama.app/Contents/Resources/ollama"]
+        if let ollama = candidates.first(where: FileManager.default.isExecutableFile(atPath:)) {
+            Shell.run(ollama, arguments: ["rm", item.name])
+            if !FileManager.default.fileExists(atPath: manifest.path) { return }
+        }
+
+        let blobs = ollamaBlobs(manifest: manifest)
+        try deleteFiles(at: manifest.path, permanently: true)
+        var used: Set<String> = []
+        if let enumerator = FileManager.default.enumerator(at: URL(fileURLWithPath: ollamaModels + "/manifests"),
+                                                           includingPropertiesForKeys: nil) {
+            for case let other as URL in enumerator {
+                used.formUnion(ollamaBlobs(manifest: other).map(\.path))
+            }
+        }
+        for blob in blobs where !used.contains(blob.path) {
+            try deleteFiles(at: blob.path, permanently: true)
+        }
     }
 
     private static func deleteFiles(at path: String, permanently: Bool) throws {

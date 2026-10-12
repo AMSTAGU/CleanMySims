@@ -98,6 +98,7 @@ private struct TreemapTile: View {
                 Spacer(minLength: 4)
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
+                    .minimumScaleFactor(0.85)
                 Text(sizeText)
                     .font(.system(size: size.width >= 200 && size.height >= 160 ? 24 : 17, weight: .bold))
                     .contentTransition(.numericText())

@@ -58,6 +58,11 @@ enum Theme {
             case .androidEmulator: return NSColor(hex: 0x3DDC84)
             case .gradleCache: return NSColor(hex: 0x02A9D9)
             case .androidStudioCache: return NSColor(hex: 0xE8710A)
+            case .agentTemp: return NSColor(hex: 0xD97757)
+            case .agentConversations: return NSColor(hex: 0x00A89D)
+            case .agentCaches: return NSColor(hex: 0xC79A00)
+            case .agentVMs: return NSColor(hex: 0x6E6E73)
+            case .localModels: return NSColor(hex: 0xDA4FB8)
             }
         }
     }
@@ -72,7 +77,7 @@ enum Theme {
 
     enum Layout {
         static let windowWidth: CGFloat = 860
-        static let windowHeight: CGFloat = 600
+        static let windowHeight: CGFloat = 720
         static let sidebarWidth: CGFloat = 240
     }
 }
@@ -102,7 +107,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
 extension Locale {
     /// The UI is English-only: format dates and lists in the app's language so sentences don't mix languages.
-    static let app = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+    nonisolated static let app = Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en")
 }
 
 extension NSAppearance {

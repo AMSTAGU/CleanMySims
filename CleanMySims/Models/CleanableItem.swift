@@ -8,6 +8,7 @@ import Foundation
 nonisolated enum Platform: String, CaseIterable, Sendable {
     case xcode = "Xcode"
     case android = "Android"
+    case agents = "AI Agents"
 }
 
 nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
@@ -25,14 +26,25 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
     case androidEmulator = "Android Emulators"
     case gradleCache = "Gradle"
     case androidStudioCache = "Android Studio"
+    // AI agents
+    case agentTemp = "Agent Temp Files"
+    case agentConversations = "Agent Conversations"
+    case agentCaches = "Agent Caches"
+    case agentVMs = "Agent VMs"
+    case localModels = "Local Models"
 
     var title: String { rawValue }
 
-    /// Shorter label used in the sidebar, where the section already says "Android".
+    /// Shorter label used in the sidebar, where the section already says "Android" or "AI Agents".
     var shortTitle: String {
         switch self {
         case .androidSdk: return "SDK"
         case .androidEmulator: return "Emulators"
+        case .agentTemp: return "Temp Files"
+        case .agentConversations: return "Conversations"
+        case .agentCaches: return "App Caches"
+        case .agentVMs: return "Virtual Machines"
+        case .localModels: return "Local Models"
         default: return rawValue
         }
     }
@@ -40,6 +52,7 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
     var platform: Platform {
         switch self {
         case .androidSdk, .androidEmulator, .gradleCache, .androidStudioCache: return .android
+        case .agentTemp, .agentConversations, .agentCaches, .agentVMs, .localModels: return .agents
         default: return .xcode
         }
     }
@@ -47,7 +60,8 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
     /// Data the tools recreate on demand: deleting it never loses work.
     var isSafeToDelete: Bool {
         switch self {
-        case .testClones, .previews, .cache, .builds, .gradleCache, .androidStudioCache: return true
+        case .testClones, .previews, .cache, .builds, .gradleCache, .androidStudioCache,
+             .agentTemp, .agentCaches: return true
         default: return false
         }
     }
@@ -66,6 +80,11 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
         case .androidEmulator: return "candybarphone"
         case .gradleCache: return "cube.fill"
         case .androidStudioCache: return "wrench.and.screwdriver.fill"
+        case .agentTemp: return "clock.arrow.circlepath"
+        case .agentConversations: return "bubble.left.and.text.bubble.right.fill"
+        case .agentCaches: return "sparkles"
+        case .agentVMs: return "server.rack"
+        case .localModels: return "brain.fill"
         }
     }
 
@@ -83,6 +102,11 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
         case .androidEmulator: return "Android virtual devices (~/.android/avd)."
         case .gradleCache: return "Gradle build caches and wrapper distributions. Downloaded again when needed."
         case .androidStudioCache: return "Android Studio caches and indexes. Rebuilt on launch."
+        case .agentTemp: return "Scratch files and build outputs left by finished Claude Code sessions and background jobs, and Codex temp folders. Running sessions are skipped."
+        case .agentConversations: return "Conversation history of Claude Code (per project), Codex (per month) and Antigravity. Deleted conversations can't be resumed. Projects with a running session are skipped."
+        case .agentCaches: return "Older Claude Code versions and the caches of Claude, Cursor and Codex. Caches of an app that is open are skipped: quit it and rescan."
+        case .agentVMs: return "Virtual machine Claude runs agents in. Downloaded again when needed. Skipped while Claude is open."
+        case .localModels: return "Models downloaded for Ollama, LM Studio and Hugging Face."
         }
     }
 
@@ -92,7 +116,10 @@ nonisolated enum CleanableItemType: String, CaseIterable, Sendable {
         case .virtualDevice, .testClones, .previews: return "Deleted with simctl."
         case .runtimes: return "Removed with simctl runtime delete."
         case .cache: return "Deleted permanently (system caches through simctl). Recreated when needed."
-        case .builds, .gradleCache, .androidStudioCache: return "Deleted permanently. Recreated when needed."
+        case .builds, .gradleCache, .androidStudioCache, .agentTemp, .agentCaches: return "Deleted permanently. Recreated when needed."
+        case .agentVMs: return "Deleted permanently. Claude downloads it again when it needs it."
+        case .agentConversations: return "Moved to the Trash."
+        case .localModels: return "Deleted permanently (Ollama models with ollama rm). Download them again to use them."
         case .androidEmulator: return "Deleted with avdmanager."
         case .androidSdk: return "Uninstalled with sdkmanager."
         case .deviceSupport, .archives: return "Moved to the Trash."

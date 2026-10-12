@@ -32,7 +32,7 @@ struct OverviewView: View {
                 manager.clean(manager.safeItems)
             }
         } message: {
-            Text("\(manager.safeItems.count) items, \(manager.safeSize.formatted(.byteCount(style: .file))). Deleted permanently (simulators and system caches through simctl). Xcode and Gradle recreate them when needed.")
+            Text("\(manager.safeItems.count) items, \(manager.safeSize.formatted(.byteCount(style: .file))). Deleted permanently (simulators and system caches through simctl). The tools recreate them when needed.")
         }
     }
 
@@ -124,7 +124,7 @@ struct OverviewView: View {
         }
         if !manager.isScanning && manager.lastScanDate != nil && manager.totalSize == 0 {
             ContentUnavailableView("Nothing to clean", systemImage: "checkmark.circle",
-                                   description: Text("No Xcode or Android data was found."))
+                                   description: Text("No Xcode, Android or AI agent data was found."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             TreemapView(entries: entries) { type in
@@ -152,7 +152,7 @@ struct OverviewView: View {
                 Text("\(safeTypes). Recreated when needed.")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.Colors.secondaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
