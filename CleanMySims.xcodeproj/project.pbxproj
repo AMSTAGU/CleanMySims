@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3FD6C239305FAFAB005FCFDB /* App_Icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3FD6C238305FAFAB005FCFDB /* App_Icon.icon */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3FF48E592EFAE33B0091079C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3FD6C238305FAFAB005FCFDB /* App_Icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = App_Icon.icon; sourceTree = "<group>"; };
 		3FF48E4B2EFAE33A0091079C /* CleanMySims.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CleanMySims.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3FF48E582EFAE33B0091079C /* CleanMySimsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CleanMySimsTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3FF48E622EFAE33B0091079C /* CleanMySimsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CleanMySimsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -33,16 +38,6 @@
 		3FF48E4D2EFAE33A0091079C /* CleanMySims */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = CleanMySims;
-			sourceTree = "<group>";
-		};
-		3FF48E5B2EFAE33B0091079C /* CleanMySimsTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CleanMySimsTests;
-			sourceTree = "<group>";
-		};
-		3FF48E652EFAE33B0091079C /* CleanMySimsUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = CleanMySimsUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -76,8 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				3FF48E4D2EFAE33A0091079C /* CleanMySims */,
-				3FF48E5B2EFAE33B0091079C /* CleanMySimsTests */,
-				3FF48E652EFAE33B0091079C /* CleanMySimsUITests */,
+				3FD6C238305FAFAB005FCFDB /* App_Icon.icon */,
 				3FF48E4C2EFAE33A0091079C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,9 +124,6 @@
 			dependencies = (
 				3FF48E5A2EFAE33B0091079C /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				3FF48E5B2EFAE33B0091079C /* CleanMySimsTests */,
-			);
 			name = CleanMySimsTests;
 			packageProductDependencies = (
 			);
@@ -152,9 +143,6 @@
 			);
 			dependencies = (
 				3FF48E642EFAE33B0091079C /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				3FF48E652EFAE33B0091079C /* CleanMySimsUITests */,
 			);
 			name = CleanMySimsUITests;
 			packageProductDependencies = (
@@ -212,6 +200,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3FD6C239305FAFAB005FCFDB /* App_Icon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -392,7 +381,7 @@
 		3FF48E6D2EFAE33B0091079C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = App_Icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -424,7 +413,7 @@
 		3FF48E6E2EFAE33B0091079C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = App_Icon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;

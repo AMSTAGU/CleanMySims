@@ -1,0 +1,50 @@
+{
+  "features" : [
+    "refractivity"
+  ],
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.88466,0.60642,0.82542,1.00000",
+      "srgb:0.66667,0.45882,0.90588,1.00000"
+    ]
+  },
+  "groups" : [
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "fill" : "system-light",
+          "glass" : true,
+          "image-name" : "broom-cleaning-svgrepo-com.svg",
+          "name" : "broom-cleaning-svgrepo-com",
+          "position" : {
+            "scale" : 0.72,
+            "translation-in-points" : [
+              0.014316627677771976,
+              0.002717616671077394
+            ]
+          }
+        }
+      ],
+      "refractivity" : {
+        "depth" : 0,
+        "enabled" : true,
+        "strength" : -0.0240625
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.2
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}
