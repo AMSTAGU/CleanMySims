@@ -31,51 +31,42 @@ If you're an iOS/macOS developer, you know how quickly Xcode can consume disk sp
 
 ## Features
 
-### Dashboard Overview
+### Overview
 
-- **Total recoverable space** displayed prominently at the top
-- **Interactive pie chart** showing space distribution by category
-- **Category cards** with item counts and sizes for quick overview
-- **One-click rescan** to refresh disk usage data
+- **Total recoverable space**, with the free space left on your Mac
+- **Treemap** of every category: each tile's area is proportional to its size, click one to open it
+- **Clean safe items** in one click: data Xcode and Gradle recreate on their own (test clones, previews, caches, builds)
+- **Light and dark mode**, following the system or forced from View > Appearance
 
-### Smart Scanning
+### Live scan
 
-Scans 8 categories of Xcode-related files simultaneously:
+- All categories are scanned **in parallel**
+- The total counts up as files are measured, with the folder being read right now
+- The sidebar turns into a checklist and the treemap tiles grow as sizes come in
+- Sizes are the **space actually used on disk**, not the logical file size
 
-| Category           | Description                                                                               |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| **Builds**         | DerivedData from Xcode compilation, including app builds and Flutter/React Native runners |
-| **Caches**         | Temporary simulator data: logs, compilation caches, downloaded data                       |
-| **Simulators**     | Virtual iOS devices used by Xcode to test apps                                            |
-| **Runtimes**       | iOS versions installed to run the simulators                                              |
-| **Device Support** | Support files to connect physical devices (iOS, watchOS, tvOS, visionOS) to Xcode         |
-| **Test Clones**    | Simulator clones created by Xcode for parallel testing (`XCTestDevices`)                  |
-| **Previews**       | Simulators used by SwiftUI previews                                                       |
-| **Archives**       | `.xcarchive` bundles from Product > Archive (they hold the dSYMs for crash reports)       |
+### Categories
 
-### Detailed Category Views
+| Category           | What it is                                                                         | Safe |
+| ------------------ | ---------------------------------------------------------------------------------- | :--: |
+| **Test Clones**    | Simulator clones created by Xcode for parallel testing (`XCTestDevices`)           |  ✓   |
+| **Runtimes**       | Simulator OS versions (sizes and removal through `simctl runtime`)                 |      |
+| **Builds**         | DerivedData, grouped into apps, Flutter/React Native runners and Xcode caches      |  ✓   |
+| **Device Support** | Symbols for the iOS, watchOS, tvOS and visionOS devices you plugged in             |      |
+| **Previews**       | Simulators used by SwiftUI previews                                                |  ✓   |
+| **Caches**         | Simulator caches and Xcode's own cache                                             |  ✓   |
+| **Archives**       | `.xcarchive` bundles from Product > Archive (they hold the dSYMs for crash reports) |      |
+| **Simulators**     | Simulators listed in Xcode                                                         |      |
+| **Android SDK**    | Platforms, build tools and system images                                           |      |
+| **Emulators**      | Android virtual devices (`~/.android/avd`)                                         |      |
+| **Gradle**         | Gradle caches and wrapper distributions                                            |  ✓   |
+| **Android Studio** | Android Studio caches and indexes                                                  |  ✓   |
 
-- **Sortable lists** by name, size ascending, or size descending
-- **Build items grouped by type** (Apps, Flutter/Runners, Xcode Caches)
-- **App icons displayed** for build artifacts when available
-- **File paths visible** for each item
-- **Reveal in Finder** option to inspect files before deleting
+### Safe deletion
 
-### Safe Deletion
-
-- **Confirmation dialogs** before any deletion
-- **Items moved to trash** (not permanently deleted) for most categories
-- **Simulators, test clones and previews properly deleted** via `xcrun simctl delete` to avoid corruption
-- **Runtimes removed** via `xcrun simctl runtime delete`
-- **Non-destructive by default** - you choose what to delete
-
-### Beautiful Native UI
-
-- Modern **SwiftUI design** with translucent materials
-- **Custom vibrant color scheme** per category
-- **Smooth animations** and hover effects
-- **Loading overlays** during scan/clean operations
-- Native macOS look and feel
+- **Confirmation** before anything is removed
+- Files and folders are **moved to the Trash**
+- Simulators, test clones and previews are deleted with `xcrun simctl delete`, runtimes with `xcrun simctl runtime delete`, so Xcode stays consistent
 
 ## Installation
 
@@ -88,33 +79,29 @@ Download the latest release from the [Releases](https://github.com/amstagu/Clean
 
 ## Requirements
 
-- **macOS 14.0** (Sonoma) or later
+- **macOS 26** (Tahoe) or later
 - **Xcode** (for the app to have something to clean!)
 
 ## Usage
 
-1. **Launch CleanMySims**
-2. The app will automatically scan your system for Xcode-related files
-3. View the **dashboard** to see total recoverable space and distribution
-4. Click on any **category card** to see detailed items
-5. **Select items** you want to delete or use "Select All"
-6. Click **Delete Selected** and confirm
-7. Items are moved to trash (except simulators and runtimes, which are deleted via simctl)
+1. **Launch CleanMySims**: the scan starts on its own
+2. Look at the **treemap** to see what takes the most space
+3. Click **Clean safe items**, or open a category to pick what to delete
+4. Hover a row to **reveal it in Finder** or **delete** it, or use **Clean All**
 
 ### Keyboard Shortcuts
 
-| Shortcut  | Action                      |
-| --------- | --------------------------- |
-| `Cmd + R` | Rescan all categories       |
-| `Cmd + F` | Focus search in detail view |
-| `Delete`  | Delete selected items       |
+| Shortcut  | Action                |
+| --------- | --------------------- |
+| `Cmd + R` | Rescan all categories |
+| `Esc`     | Stop the running scan |
 
 ## Building from Source
 
 ### Prerequisites
 
-- Xcode 15.0 or later
-- macOS 14.0 (Sonoma) or later
+- Xcode 26 or later
+- macOS 26 (Tahoe) or later
 
 ### Steps
 
@@ -151,30 +138,29 @@ The built app will be in `build/Build/Products/Release/CleanMySims.app`.
 
 ```
 CleanMySims/
-├── CleanMySimsApp.swift          # App entry point
-├── ContentView.swift             # Main layout with navigation
+├── CleanMySimsApp.swift          # App entry point, menus (Rescan, Appearance)
+├── ContentView.swift             # Sidebar + detail layout, cleaning overlay
 ├── Models/
-│   └── CleanableItem.swift       # Data models
+│   └── CleanableItem.swift       # Categories and items
 ├── Logic/
-│   ├── SimulatorManager.swift    # Core business logic
-│   ├── Shell.swift               # Shell command execution
-│   └── IconThumbnailCache.swift  # Icon caching system
-├── Views/
-│   ├── Theme.swift               # Colors, fonts, layout constants
-│   ├── SidebarView.swift         # Navigation sidebar
-│   ├── DashboardView.swift       # Main dashboard
-│   ├── DetailListView.swift      # Category detail views
-│   └── Components/               # Reusable UI components
-└── Assets.xcassets/              # App icons and images
+│   ├── DiskScanner.swift         # Finds and measures items, removes them
+│   ├── SimulatorManager.swift    # Observable state: parallel scan, progress, cleaning
+│   ├── Shell.swift               # Runs xcrun simctl
+│   └── IconThumbnailCache.swift  # App and file icons
+└── Views/
+    ├── Theme.swift               # Light/dark color tokens, appearance
+    ├── SidebarView.swift         # Categories with sizes, scan checklist
+    ├── OverviewView.swift        # Total, treemap, clean safe items
+    ├── DetailListView.swift      # Items of one category
+    └── Components/               # TreemapView, CategoryIcon, AsyncIconView
 ```
 
 ### Technologies Used
 
-- **SwiftUI** - Modern declarative UI framework
-- **Combine** - Reactive programming for state management
-- **FileManager** - File system operations and size calculations
-- **xcrun simctl** - Simulator management via CLI
-- **Grand Central Dispatch** - Background threading for smooth UI
+- **SwiftUI** and **Observation**
+- **Swift concurrency**: one task per category, progress streamed with `AsyncStream`
+- **FileManager** allocated sizes for real disk usage
+- **xcrun simctl** for simulators, device sets and runtimes
 
 ## Privacy
 
