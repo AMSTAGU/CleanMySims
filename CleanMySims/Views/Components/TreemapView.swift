@@ -20,10 +20,16 @@ struct TreemapView: View {
     var onSelect: (CleanableItemType) -> Void = { _ in }
 
     private let spacing: CGFloat = 4
+    /// Categories that would get less than this area (in points²) are left out:
+    /// their tile would be a thin sliver that reads as a hole. The sidebar still lists them.
+    private let minimumTileArea: CGFloat = 48 * 48
 
     var body: some View {
         GeometryReader { geometry in
-            let visible = entries.filter { $0.size > 0 }
+            let nonEmpty = entries.filter { $0.size > 0 }
+            let total = CGFloat(nonEmpty.reduce(0) { $0 + $1.size })
+            let area = geometry.size.width * geometry.size.height
+            let visible = nonEmpty.filter { CGFloat($0.size) / max(total, 1) * area >= minimumTileArea }
             let rects = Treemap.layout(
                 visible.map { Double($0.size) },
                 in: CGRect(origin: .zero, size: geometry.size)
