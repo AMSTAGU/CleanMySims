@@ -5,7 +5,7 @@
 <h1 align="center">CleanMySims</h1>
 
 <p align="center">
-  <strong>Reclaim the disk space Xcode and Android Studio quietly eat</strong>
+  <strong>Reclaim the disk space Xcode, Android Studio and AI agents quietly eat</strong>
 </p>
 
 <p align="center">
@@ -28,7 +28,7 @@
 
 ## Overview
 
-**CleanMySims** is a native macOS app that finds what Xcode and Android tooling leave on your disk: simulator clones from parallel testing, old runtimes, DerivedData, device symbols, SwiftUI preview simulators, emulators, Gradle caches… It shows how much each one takes, tells you what is safe to delete, and removes it with the same tools Xcode and Android Studio use.
+**CleanMySims** is a native macOS app that finds what Xcode, Android tooling and AI coding agents leave on your disk: simulator clones from parallel testing, old runtimes, DerivedData, device symbols, SwiftUI preview simulators, emulators, Gradle caches, Claude Code and Codex leftovers, local models… It shows how much each one takes, tells you what is safe to delete, and removes it with the same tools Xcode and Android Studio use.
 
 ## Features
 
@@ -36,7 +36,7 @@
 
 - **Total recoverable space**, next to the free space left on your Mac
 - **Treemap** of every category: each tile's area is proportional to its size; click one to see what's inside
-- **Clean safe items** in one click: everything the tools recreate on their own (test clones, previews, caches, builds, Gradle and Android Studio caches)
+- **Clean safe items** in one click: everything the tools recreate on their own (test clones, previews, caches, builds, Gradle and Android Studio caches, agent temp files and caches)
 - **Light and dark mode**, following the system or forced from View › Appearance
 
 ### Live scan
@@ -58,6 +58,7 @@
 
 - Sort by size or name, reveal any item in Finder, delete one item or the whole category
 - DerivedData is grouped into apps (with their icons), Flutter / React Native runners and Xcode caches
+- AI agent items show the icon of the app they belong to (Claude, ChatGPT, Cursor, Antigravity, Ollama)
 
 ### Categories
 
@@ -75,8 +76,15 @@
 | **Emulators**      | Android virtual devices, including leftovers Android Studio shows as broken        |      |
 | **Gradle**         | Gradle caches and wrapper distributions                                            |  ✓   |
 | **Android Studio** | Android Studio caches and indexes                                                  |  ✓   |
+| **Agent Temp Files** | Scratch folders of finished Claude Code sessions (`/tmp/claude-<uid>`), temp folders of finished background jobs, Codex temp folders |  ✓   |
+| **Agent Conversations** | Claude Code conversations (per project), Codex sessions (per month), Antigravity browser recordings and backup |      |
+| **Agent Caches**   | Older Claude Code versions, caches of Claude, Cursor and Codex                     |  ✓   |
+| **Agent VMs**      | The virtual machine Claude runs agents in                                          |      |
+| **Local Models**   | Models downloaded for Ollama, LM Studio and Hugging Face                           |      |
 
 **Safe** means the tools recreate the data when they need it: deleting it never loses work.
+
+AI agent data in use is never listed: the folders of running Claude Code sessions (and of background jobs still working or waiting for you), conversations written to in the last few minutes, and the caches and virtual machine of an app that is open. Quit the app and rescan to see them.
 
 ## How items are removed
 
@@ -90,7 +98,10 @@ CleanMySims uses the tool that owns each item, so Xcode and Android Studio stay 
 | Emulators                          | `avdmanager delete avd`, then the leftover `.avd` / `.ini` files  |
 | Android SDK                        | `sdkmanager --uninstall` (Trash if sdkmanager isn't installed)    |
 | Builds, Xcode cache, Gradle, Android Studio | Deleted permanently: the tools rebuild them               |
-| Device Support, Archives           | Moved to the Trash, so you can still get them back                |
+| Agent temp files, agent caches, agent VMs | Deleted permanently: the tools recreate them               |
+| Ollama models                      | `ollama rm`, or the model's manifest and the blobs no other model uses |
+| LM Studio and Hugging Face models  | Deleted permanently                                               |
+| Device Support, Archives, agent conversations | Moved to the Trash, so you can still get them back     |
 
 Everything asks for confirmation first. If an item can't be removed (a simulator in use, a permission issue…), it stays listed and CleanMySims tells you why.
 
@@ -101,7 +112,7 @@ Download the latest version from the [Releases](https://github.com/amstagu/Clean
 ## Requirements
 
 - **macOS 26** (Tahoe) or later
-- **Xcode** and/or **Android Studio**, for the app to have something to clean
+- **Xcode**, **Android Studio** and/or AI coding tools (Claude Code, Codex, Cursor, Antigravity, Ollama…), for the app to have something to clean
 
 ## Usage
 
@@ -156,7 +167,7 @@ CleanMySims/
 ├── Logic/
 │   ├── DiskScanner.swift         # Finds and measures items, removes them with the right tool
 │   ├── SimulatorManager.swift    # Observable state: parallel scan, progress, cleaning
-│   ├── Shell.swift               # Runs xcrun simctl, avdmanager, sdkmanager
+│   ├── Shell.swift               # Runs xcrun simctl, avdmanager, sdkmanager, ollama
 │   └── IconThumbnailCache.swift  # App and file icons
 └── Views/
     ├── Theme.swift               # Light/dark color tokens, appearance
@@ -171,7 +182,7 @@ CleanMySims/
 - **SwiftUI** and **Observation**
 - **Swift concurrency**: one task per category, progress streamed with `AsyncStream`
 - **FileManager** allocated sizes for real disk usage
-- **xcrun simctl**, **avdmanager** and **sdkmanager** for removal
+- **xcrun simctl**, **avdmanager**, **sdkmanager** and **ollama** for removal
 
 ## Privacy
 
