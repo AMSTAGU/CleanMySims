@@ -37,17 +37,14 @@ struct GradientIcon: View {
 
 /// Green "Safe" pill for categories the tools recreate on their own.
 struct SafeBadge: View {
-    /// White version for colored backgrounds (treemap tiles).
-    var onColor = false
-
     var body: some View {
         Label("Safe", systemImage: "checkmark")
             .font(.system(size: 10, weight: .semibold))
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .foregroundStyle(onColor ? Color.white : Theme.Colors.safe)
-            .background(onColor ? Color.white.opacity(0.25) : Theme.Colors.safeBackground, in: Capsule())
+            .foregroundStyle(Theme.Colors.safe)
+            .background(Theme.Colors.safeBackground, in: Capsule())
             .help("Recreated automatically when needed")
     }
 }
